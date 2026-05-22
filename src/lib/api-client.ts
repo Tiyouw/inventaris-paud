@@ -1,0 +1,113 @@
+import type { ConditionLog, InventoryItem } from "./inventory";
+
+export type InventoryPayload = {
+  items: InventoryItem[];
+  conditionLogs: ConditionLog[];
+  source: "supabase" | "seed";
+  message?: string;
+};
+
+export type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
+  id?: string;
+  isActive?: boolean;
+};
+
+type ApiErrorPayload = {
+  error?: string;
+  message?: string;
+};
+
+export async function fetchInventory(): Promise<InventoryPayload> {
+  const response = await fetch("/api/items", {
+    cache: "no-store",
+  });
+
+  if (response.status === 503) {
+    return {
+      items: [],
+      conditionLogs: [],
+      source: "seed",
+      message: "Supabase belum dikonfigurasi. Menggunakan data contoh.",
+    };
+  }
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+
+  return response.json() as Promise<InventoryPayload>;
+}
+
+export async function createInventoryItem(
+  item: SaveInventoryItemInput,
+): Promise<InventoryItem> {
+  const response = await fetch("/api/items", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+
+  const payload = (await response.json()) as { item: InventoryItem };
+  return payload.item;
+}
+
+export async function updateInventoryItem(
+  itemId: string,
+  item: SaveInventoryItemInput,
+): Promise<InventoryItem> {
+  const response = await fetch(`/api/items/${itemId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+
+  const payload = (await response.json()) as { item: InventoryItem };
+  return payload.item;
+}
+
+export async function softDeleteInventoryItem(itemId: string): Promise<void> {
+  const response = await fetch(`/api/items/${itemId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+}
+
+export async function uploadInventoryPhoto(
+  blob: Blob,
+  fileName: string,
+): Promise<string> {
+  const formData = new FormData();
+  formData.set("file", blob, fileName);
+
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+
+  const payload = (await response.json()) as { url: string };
+  return payload.url;
+}
+
+async function getApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as ApiErrorPayload;
+    return payload.message ?? payload.error ?? `Request failed: ${response.status}`;
+  } catch {
+    return `Request failed: ${response.status}`;
+  }
+}
