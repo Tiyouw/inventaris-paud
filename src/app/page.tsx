@@ -168,11 +168,14 @@ export default function Home() {
           return;
         }
 
-        if (payload.items.length > 0) {
+        if (payload.source === "supabase" || payload.items.length > 0) {
           setItems(payload.items);
         }
 
-        if (payload.conditionLogs.length > 0) {
+        if (
+          payload.source === "supabase" ||
+          payload.conditionLogs.length > 0
+        ) {
           setConditionLogs(payload.conditionLogs);
         }
 
