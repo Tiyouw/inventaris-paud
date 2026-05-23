@@ -4,6 +4,7 @@ import {
   SupabaseConfigurationError,
   uploadInventoryPhoto,
 } from "@/lib/inventory-store";
+import { validateWebpUpload } from "@/lib/media";
 
 type Base64UploadPayload = {
   fileName?: string;
@@ -34,6 +35,12 @@ async function readFormUpload(request: Request) {
     throw new Error("Upload requires a WebP file field named file.");
   }
 
+  const validation = validateWebpUpload(file.type || "image/webp", file.size);
+
+  if (!validation.valid) {
+    throw new UploadValidationError(validation.message);
+  }
+
   return {
     content: await file.arrayBuffer(),
     fileName: file.name,
@@ -52,12 +59,28 @@ async function readJsonUpload(request: Request) {
   const base64 = rawBase64.includes(",")
     ? rawBase64.slice(rawBase64.indexOf(",") + 1)
     : rawBase64;
+  const content = Buffer.from(base64, "base64");
+  const validation = validateWebpUpload(
+    payload.contentType ?? "image/webp",
+    content.byteLength,
+  );
+
+  if (!validation.valid) {
+    throw new UploadValidationError(validation.message);
+  }
 
   return {
-    content: Buffer.from(base64, "base64"),
+    content,
     fileName: payload.fileName,
     contentType: payload.contentType ?? "image/webp",
   };
+}
+
+class UploadValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UploadValidationError";
+  }
 }
 
 function handleUploadError(error: unknown) {
@@ -68,6 +91,16 @@ function handleUploadError(error: unknown) {
         message: error.message,
       },
       { status: 503 },
+    );
+  }
+
+  if (error instanceof UploadValidationError) {
+    return NextResponse.json(
+      {
+        error: "INVALID_UPLOAD",
+        message: error.message,
+      },
+      { status: 400 },
     );
   }
 

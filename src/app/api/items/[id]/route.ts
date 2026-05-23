@@ -43,6 +43,26 @@ function handleInventoryError(error: unknown) {
     );
   }
 
+  if (isUniqueAssetTagError(error)) {
+    return NextResponse.json(
+      {
+        error: "DUPLICATE_ASSET_TAG",
+        message: "Kode barang sudah digunakan. Pakai kode lain agar inventaris tetap unik.",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (isValidationError(error)) {
+    return NextResponse.json(
+      {
+        error: "INVALID_INVENTORY_ITEM",
+        message: error.message,
+      },
+      { status: 400 },
+    );
+  }
+
   return NextResponse.json(
     {
       error: "INVENTORY_REQUEST_FAILED",
@@ -51,4 +71,17 @@ function handleInventoryError(error: unknown) {
     },
     { status: 500 },
   );
+}
+
+function isUniqueAssetTagError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505"
+  );
+}
+
+function isValidationError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "InventoryValidationError";
 }

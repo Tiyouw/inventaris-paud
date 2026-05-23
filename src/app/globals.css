@@ -2,17 +2,19 @@
 
 :root {
   color-scheme: light;
-  --background: #fff8ed;
-  --foreground: #263238;
+  --background: #eff6ff;
+  --foreground: #0f172a;
   --surface: #ffffff;
-  --surface-soft: #fff3d9;
-  --border-soft: #eadfcf;
-  --brand: #2f9e8f;
-  --brand-strong: #14756b;
-  --accent: #f7b955;
-  --danger: #d94f43;
-  --shadow-soft: 0 18px 45px rgba(93, 72, 42, 0.12);
-  --radius-base: 0.75rem;
+  --surface-soft: #f1f5fd;
+  --border-soft: #e4ecfc;
+  --brand: #2563eb;
+  --brand-strong: #1d4ed8;
+  --accent: #f59e0b;
+  --accent-pink: #ec4899;
+  --danger: #dc2626;
+  --shadow-soft: 0 18px 45px rgba(37, 99, 235, 0.1);
+  --shadow-card: 0 14px 30px rgba(15, 23, 42, 0.08);
+  --radius-base: 1rem;
 }
 
 @theme inline {
@@ -26,9 +28,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(247, 185, 85, 0.22), transparent 28rem),
-    linear-gradient(180deg, #fffaf1 0%, var(--background) 48%, #f5fbf8 100%);
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 48%, #fdf2f8 100%);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   line-height: 1.5;
@@ -49,7 +49,7 @@ html {
 }
 
 ::selection {
-  background: rgba(247, 185, 85, 0.45);
+  background: rgba(245, 158, 11, 0.35);
   color: var(--foreground);
 }
 
@@ -97,7 +97,7 @@ canvas {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(47, 158, 143, 0.45);
+  outline: 3px solid rgba(37, 99, 235, 0.45);
   outline-offset: 3px;
 }
 

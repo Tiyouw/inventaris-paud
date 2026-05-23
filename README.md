@@ -77,14 +77,17 @@ Supabase configuration is expected to cover:
 - Storage bucket access for optimized WebP item photos.
 - Future authentication or shared-access settings.
 
-Planned API route contract for the Supabase workflow:
+Current API route contract for the Supabase workflow:
 
-- `GET /api/zones` lists the five Makerspace zones.
-- `GET /api/items` lists active inventory items, with optional zone/search/filter query params.
-- `POST /api/items` creates an item and may write the first condition log.
-- `PATCH /api/items/[id]` updates item metadata; condition changes should also insert an `item_condition_logs` row.
+- `GET /api/health` checks Supabase configuration, zone access, and Storage bucket name.
+- `GET /api/items` lists active inventory items and condition logs.
+- `POST /api/items` creates an item and writes the first condition log.
+- `PUT /api/items/[id]` updates item metadata; condition changes also insert an `item_condition_logs` row.
 - `DELETE /api/items/[id]` soft-deletes an item by setting `is_active = false` and `deleted_at`.
-- `POST /api/items/[id]/photos` uploads an optimized WebP photo to Supabase Storage and saves its URL/path.
-- `GET /api/items/[id]/condition-logs` returns condition history for one item.
+- `POST /api/upload` accepts optimized WebP photos and uploads them to Supabase Storage.
+- `GET /api/reports` returns a printable HTML report for browser PDF export.
+- `GET /api/reports?zoneId=mini-garden` returns a printable report for one Makerspace zone.
 
 See `docs/PROJECT_PLAN.md` for the product plan, MVP scope, suggested schema, and acceptance criteria.
+
+See `docs/DEPLOYMENT.md` for the Vercel + Supabase deployment checklist, required environment variables, and production smoke test.

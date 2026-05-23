@@ -34,8 +34,7 @@ import {
   uploadInventoryPhoto,
   type SaveInventoryItemInput,
 } from "@/lib/api-client";
-import { compressImageToWebp } from "@/lib/media";
-import { createInventoryReport } from "@/lib/reporting";
+import { compressImageToWebp, validateSourceImage } from "@/lib/media";
 
 type AppTab = "dashboard" | "zones";
 
@@ -88,7 +87,7 @@ const zoneVisuals: Record<
   "mini-garden": {
     badge: "MG",
     theme: "from-emerald-50 via-lime-50 to-cyan-50",
-    iconBg: "bg-teal-100 text-teal-700",
+    iconBg: "bg-emerald-100 text-emerald-700",
     accent: "LINGKUNGAN",
   },
   "art-gallery": {
@@ -138,6 +137,77 @@ function createEmptyForm(zoneId: InventoryZoneId): ItemFormState {
   };
 }
 
+function createSuggestedAssetTag(
+  zoneId: InventoryZoneId,
+  items: InventoryItem[],
+): string {
+  const prefix = zoneId
+    .split("-")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const usedNumbers = items
+    .filter((item) => item.zoneId === zoneId)
+    .map((item) => item.assetTag.match(new RegExp(`^${prefix}-(\\d+)$`))?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value));
+  const nextNumber = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
+
+  return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+}
+
+function validateFormInput(
+  form: ItemFormState,
+  items: InventoryItem[],
+): string {
+  const assetTag = form.assetTag.trim();
+  const name = form.name.trim();
+  const location = form.location.trim();
+  const quantity = Number.parseInt(form.quantity, 10);
+  const minimumQuantity = Number.parseInt(form.minimumQuantity, 10);
+  const duplicateAsset = items.some(
+    (item) =>
+      item.isActive &&
+      item.id !== form.id &&
+      item.assetTag.trim().toLowerCase() === assetTag.toLowerCase(),
+  );
+
+  if (!assetTag) {
+    return "Kode barang wajib diisi.";
+  }
+
+  if (assetTag.length > 40) {
+    return "Kode barang maksimal 40 karakter.";
+  }
+
+  if (duplicateAsset) {
+    return "Kode barang sudah digunakan. Pakai kode lain.";
+  }
+
+  if (!name) {
+    return "Nama barang wajib diisi.";
+  }
+
+  if (name.length > 120) {
+    return "Nama barang maksimal 120 karakter.";
+  }
+
+  if (!location) {
+    return "Lokasi barang wajib diisi.";
+  }
+
+  if (!Number.isInteger(quantity) || quantity < 0) {
+    return "Jumlah barang harus angka 0 atau lebih.";
+  }
+
+  if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) {
+    return "Jumlah minimal harus angka 0 atau lebih.";
+  }
+
+  return "";
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<AppTab>("dashboard");
   const [selectedZoneId, setSelectedZoneId] = useState<InventoryZoneId | null>(
@@ -150,6 +220,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [photoStatus, setPhotoStatus] = useState("");
+  const [formStatus, setFormStatus] = useState("");
   const [dataSource, setDataSource] = useState<"seed" | "supabase">("seed");
   const [syncStatus, setSyncStatus] = useState(
     "Memuat data contoh sambil menunggu Supabase.",
@@ -215,9 +286,6 @@ export default function Home() {
     getItemsNeedingAttention(activeItems),
   ).slice(0, 5);
   const lowStockItems = getLowStockItems(activeItems);
-  const fullReport = createInventoryReport(activeItems, {
-    title: "Laporan Inventaris Makerspace",
-  });
 
   const zoneItems = useMemo(() => {
     if (!selectedZoneId) {
@@ -250,9 +318,33 @@ export default function Home() {
 
   function openAddForm() {
     const zoneId = selectedZoneId ?? "mini-garden";
-    setForm(createEmptyForm(zoneId));
+    setForm({
+      ...createEmptyForm(zoneId),
+      assetTag: createSuggestedAssetTag(zoneId, activeItems),
+    });
     setPhotoStatus("");
+    setFormStatus("");
     setIsFormOpen(true);
+  }
+
+  function openReport(zoneId?: InventoryZoneId) {
+    const path = zoneId ? `/api/reports?zoneId=${zoneId}` : "/api/reports";
+    window.open(path, "_blank", "noopener,noreferrer");
+  }
+
+  async function refreshInventoryFromApi(successMessage: string) {
+    const payload = await fetchInventory();
+
+    if (payload.source === "supabase" || payload.items.length > 0) {
+      setItems(payload.items);
+    }
+
+    if (payload.source === "supabase" || payload.conditionLogs.length > 0) {
+      setConditionLogs(payload.conditionLogs);
+    }
+
+    setDataSource(payload.source);
+    setSyncStatus(successMessage);
   }
 
   function openEditForm(item: InventoryItem) {
@@ -271,6 +363,7 @@ export default function Home() {
       photoUrl: item.photoUrl,
     });
     setPhotoStatus("");
+    setFormStatus("");
     setIsFormOpen(true);
   }
 
@@ -284,18 +377,25 @@ export default function Home() {
       0,
       Number.parseInt(form.minimumQuantity, 10) || 0,
     );
+    const validationMessage = validateFormInput(form, items);
+
+    if (validationMessage) {
+      setFormStatus(validationMessage);
+      setIsSaving(false);
+      return;
+    }
 
     const itemInput: SaveInventoryItemInput = {
       id: form.id,
-      assetTag: form.assetTag.trim() || `INV-${Date.now()}`,
-      name: form.name.trim() || "Barang tanpa nama",
+      assetTag: form.assetTag.trim(),
+      name: form.name.trim(),
       zoneId: form.zoneId,
       typeId: form.typeId,
       conditionId: form.conditionId,
       status: form.status,
       quantity,
       minimumQuantity,
-      location: form.location.trim() || "Belum ditentukan",
+      location: form.location.trim(),
       owner: "PAUD Makerspace",
       lastCheckedAt: now,
       notes: form.notes.trim() || undefined,
@@ -303,53 +403,27 @@ export default function Home() {
       isActive: true,
     };
 
-    const existingItem = form.id
-      ? items.find((item) => item.id === form.id)
-      : undefined;
-
     if (dataSource === "supabase") {
       try {
         const savedItem = form.id
           ? await updateInventoryItem(form.id, itemInput)
           : await createInventoryItem(itemInput);
 
-        setItems((currentItems) => {
-          const exists = currentItems.some((item) => item.id === savedItem.id);
-
-          return exists
-            ? currentItems.map((item) =>
-                item.id === savedItem.id ? savedItem : item,
-              )
-            : [savedItem, ...currentItems];
-        });
-
-        if (!existingItem || existingItem.conditionId !== savedItem.conditionId) {
-          const note = !existingItem
-            ? `Barang baru ditambahkan dengan kondisi ${conditionLabels[savedItem.conditionId]}.`
-            : `Kondisi berubah dari ${conditionLabels[existingItem.conditionId]} menjadi ${conditionLabels[savedItem.conditionId]}.`;
-
-          setConditionLogs((currentLogs) => [
-            {
-              id: `local-log-${Date.now()}`,
-              itemId: savedItem.id,
-              conditionId: savedItem.conditionId,
-              checkedAt: now,
-              checkedBy: "Guru",
-              note,
-            },
-            ...currentLogs,
-          ]);
-        }
-
-        setSyncStatus("Data tersimpan ke Supabase.");
+        await refreshInventoryFromApi("Data tersimpan ke Supabase.");
         setSelectedZoneId(savedItem.zoneId);
         setIsFormOpen(false);
+        setFormStatus("");
         return;
       } catch (error) {
         setSyncStatus(
           error instanceof Error
             ? `Gagal menyimpan ke Supabase: ${error.message}`
             : "Gagal menyimpan ke Supabase.",
+        );
+        setFormStatus(
+          error instanceof Error
+            ? error.message
+            : "Gagal menyimpan barang. Coba ulangi.",
         );
       } finally {
         setIsSaving(false);
@@ -366,15 +440,15 @@ export default function Home() {
       if (!existingItem) {
         const newItem: InventoryItem = {
           id: `item-${Date.now()}`,
-          assetTag: form.assetTag.trim() || `INV-${Date.now()}`,
-          name: form.name.trim() || "Barang tanpa nama",
+          assetTag: form.assetTag.trim(),
+          name: form.name.trim(),
           zoneId: form.zoneId,
           typeId: form.typeId,
           conditionId: form.conditionId,
           status: form.status,
           quantity,
           minimumQuantity,
-          location: form.location.trim() || "Belum ditentukan",
+          location: form.location.trim(),
           owner: "PAUD Makerspace",
           lastCheckedAt: now,
           notes: form.notes.trim() || undefined,
@@ -416,14 +490,14 @@ export default function Home() {
           ? {
               ...item,
               assetTag: form.assetTag.trim() || item.assetTag,
-              name: form.name.trim() || item.name,
+              name: form.name.trim(),
               zoneId: form.zoneId,
               typeId: form.typeId,
               conditionId: form.conditionId,
               status: form.status,
               quantity,
               minimumQuantity,
-              location: form.location.trim() || item.location,
+              location: form.location.trim(),
               notes: form.notes.trim() || undefined,
               photoUrl: form.photoUrl,
               lastCheckedAt: now,
@@ -435,10 +509,19 @@ export default function Home() {
     setSelectedZoneId(form.zoneId);
     setIsFormOpen(false);
     setIsSaving(false);
+    setFormStatus("");
     setSyncStatus("Perubahan tersimpan sementara di browser.");
   }
 
   async function softDeleteItem(itemId: string) {
+    const confirmed = window.confirm(
+      "Hapus barang ini dari daftar aktif? Riwayat kondisinya tetap disimpan.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     const previousItems = items;
     setItems((currentItems) =>
       currentItems.map((item) =>
@@ -453,7 +536,7 @@ export default function Home() {
 
     try {
       await softDeleteInventoryItem(itemId);
-      setSyncStatus("Barang berhasil dihapus dari daftar aktif.");
+      await refreshInventoryFromApi("Barang berhasil dihapus dari daftar aktif.");
     } catch (error) {
       setItems(previousItems);
       setSyncStatus(
@@ -466,6 +549,13 @@ export default function Home() {
 
   async function handlePhotoChange(file?: File) {
     if (!file) {
+      return;
+    }
+
+    const validation = validateSourceImage(file);
+
+    if (!validation.valid) {
+      setPhotoStatus(validation.message);
       return;
     }
 
@@ -487,34 +577,43 @@ export default function Home() {
       setPhotoStatus(
         `Foto WebP siap: ${Math.max(1, Math.round(result.compressedSize / 1024))} KB`,
       );
-    } catch {
-      setPhotoStatus("Foto belum bisa dikompresi di browser ini.");
+    } catch (error) {
+      setPhotoStatus(
+        error instanceof Error
+          ? `Foto gagal diproses: ${error.message}`
+          : "Foto belum bisa diproses.",
+      );
     }
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f7fb] pb-28 text-slate-900">
-      <header className="sticky top-0 z-20 border-b border-slate-100 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+    <main className="min-h-dvh bg-[var(--background)] pb-28 text-slate-900">
+      <header className="sticky top-0 z-20 border-b border-blue-100 bg-white/90 shadow-sm backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-black uppercase text-teal-700">
-                Inventaris PAUD
-              </p>
-              <h1 className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">
-                Logbook Makerspace
-              </h1>
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-600 text-base font-black text-white shadow-[0_6px_0_#1d4ed8]">
+                IP
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-normal text-blue-700">
+                  Inventaris PAUD
+                </p>
+                <h1 className="mt-0.5 text-2xl font-black text-slate-950 sm:text-3xl">
+                  Logbook Makerspace
+                </h1>
+              </div>
             </div>
             <button
-              onClick={() => window.print()}
-              title={`${fullReport.rows.length} baris laporan siap dicetak`}
-              className="rounded-2xl bg-[#f7b733] px-5 py-3 text-sm font-black text-white shadow-[0_5px_0_#d95f0e] transition hover:-translate-y-0.5"
+              onClick={() => openReport()}
+              title={`${activeItems.length} barang aktif siap dicetak`}
+              className="min-h-12 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_5px_0_#b45309] transition hover:-translate-y-0.5 hover:bg-amber-400 active:translate-y-0"
             >
               Cetak / PDF
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 rounded-[1.6rem] bg-slate-100 p-2 sm:max-w-lg">
+          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-blue-50 p-1.5 ring-1 ring-blue-100 sm:max-w-lg">
             <TabButton
               active={activeTab === "dashboard"}
               label="Dashboard"
@@ -551,10 +650,12 @@ export default function Home() {
           onBack={() => {
             setSelectedZoneId(null);
             setIsFormOpen(false);
+            setFormStatus("");
           }}
           onDeleteItem={softDeleteItem}
           onEditItem={openEditForm}
           onOpenZone={openZone}
+          onPrintZone={openReport}
           onPhotoChange={handlePhotoChange}
           onQueryChange={setQuery}
           onSubmit={handleSubmit}
@@ -566,12 +667,13 @@ export default function Home() {
           syncStatus={syncStatus}
           isSaving={isSaving}
           form={form}
+          formStatus={formStatus}
           zoneItems={zoneItems}
           activeItems={activeItems}
         />
       )}
 
-      <nav className="fixed inset-x-4 bottom-4 z-30 mx-auto grid max-w-md grid-cols-2 gap-2 rounded-[2rem] bg-white/95 p-2 shadow-2xl ring-1 ring-slate-100 backdrop-blur sm:hidden">
+      <nav className="fixed inset-x-4 bottom-4 z-30 mx-auto grid max-w-md grid-cols-2 gap-2 rounded-3xl bg-white/95 p-2 shadow-2xl ring-1 ring-blue-100 backdrop-blur sm:hidden">
         <TabButton
           active={activeTab === "dashboard"}
           label="Dashboard"
@@ -610,8 +712,8 @@ function DashboardView({
   return (
     <section className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8">
       <div className="space-y-6">
-        <div className="rounded-[2rem] bg-gradient-to-br from-teal-100 via-white to-orange-100 p-6 shadow-sm">
-          <p className="inline-flex rounded-full bg-white/80 px-4 py-2 text-sm font-black text-teal-700">
+        <div className="overflow-hidden rounded-[1.75rem] border border-blue-100 bg-white p-6 shadow-[var(--shadow-card)]">
+          <p className="inline-flex rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700">
             Ringkasan Hari Ini
           </p>
           <h2 className="mt-4 max-w-2xl text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
@@ -621,19 +723,19 @@ function DashboardView({
             Gunakan dashboard untuk melihat barang yang perlu perhatian sebelum
             membuka detail di setiap zona.
           </p>
-          <p className="mt-4 inline-flex rounded-full bg-white/80 px-4 py-2 text-sm font-black text-slate-600">
+          <p className="mt-4 inline-flex rounded-full bg-amber-50 px-4 py-2 text-sm font-black text-amber-800">
             {syncStatus}
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Total Barang" value={stats.totalAssets} />
-          <MetricCard label="Total Unit" value={stats.totalUnits} />
-          <MetricCard label="Tersedia" value={`${stats.availableRate}%`} />
-          <MetricCard label="Perlu Cek" value={stats.repairQueueCount + stats.missingCount} />
+          <MetricCard label="Total Barang" tone="blue" value={stats.totalAssets} />
+          <MetricCard label="Total Unit" tone="pink" value={stats.totalUnits} />
+          <MetricCard label="Tersedia" tone="green" value={`${stats.availableRate}%`} />
+          <MetricCard label="Perlu Cek" tone="amber" value={stats.repairQueueCount + stats.missingCount} />
         </div>
 
-        <section className="rounded-[2rem] bg-white p-5 shadow-sm">
+        <section className="rounded-[1.75rem] border border-blue-100 bg-white p-5 shadow-[var(--shadow-card)]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-black text-slate-950">
@@ -664,7 +766,7 @@ function DashboardView({
                 <button
                   key={zone.id}
                   onClick={() => onOpenZone(zone.id)}
-                  className="rounded-3xl border border-slate-100 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md"
+                  className="min-h-32 rounded-2xl border border-blue-100 bg-blue-50/50 p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:translate-y-0"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -673,13 +775,13 @@ function DashboardView({
                         {zoneCount.count} barang, {attentionCount} perhatian
                       </p>
                     </div>
-                    <span className="rounded-full bg-teal-100 px-3 py-1 text-sm font-black text-teal-700">
+                    <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-blue-700 ring-1 ring-blue-100">
                       {percent}%
                     </span>
                   </div>
-                  <div className="mt-4 h-3 rounded-full bg-white">
+                  <div className="mt-4 h-3 rounded-full bg-white ring-1 ring-blue-100">
                     <div
-                      className="h-3 rounded-full bg-teal-500"
+                      className="h-3 rounded-full bg-blue-600"
                       style={{ width: `${percent}%` }}
                     />
                   </div>
@@ -727,6 +829,7 @@ function ZonesView({
   conditionFilter,
   conditionLogs,
   form,
+  formStatus,
   isFormOpen,
   isSaving,
   onAddItem,
@@ -734,6 +837,7 @@ function ZonesView({
   onDeleteItem,
   onEditItem,
   onOpenZone,
+  onPrintZone,
   onPhotoChange,
   onQueryChange,
   onSubmit,
@@ -749,6 +853,7 @@ function ZonesView({
   conditionFilter: string;
   conditionLogs: ConditionLog[];
   form: ItemFormState;
+  formStatus: string;
   isFormOpen: boolean;
   isSaving: boolean;
   onAddItem: () => void;
@@ -756,6 +861,7 @@ function ZonesView({
   onDeleteItem: (itemId: string) => void;
   onEditItem: (item: InventoryItem) => void;
   onOpenZone: (zoneId: InventoryZoneId) => void;
+  onPrintZone: (zoneId?: InventoryZoneId) => void;
   onPhotoChange: (file?: File) => void;
   onQueryChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -771,7 +877,7 @@ function ZonesView({
     return (
       <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-5">
-          <p className="inline-flex rounded-full bg-teal-100 px-4 py-2 text-sm font-black text-teal-700">
+          <p className="inline-flex rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700 ring-1 ring-blue-100">
             Zona Makerspace
           </p>
           <h2 className="mt-3 text-3xl font-black text-slate-950">
@@ -789,20 +895,20 @@ function ZonesView({
               <button
                 key={zone.id}
                 onClick={() => onOpenZone(zone.id)}
-                className={`overflow-hidden rounded-[2rem] bg-gradient-to-br ${visual.theme} p-5 text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-1 hover:shadow-xl`}
+                className={`min-h-[23rem] overflow-hidden rounded-[1.75rem] bg-gradient-to-br ${visual.theme} p-5 text-left shadow-[var(--shadow-card)] ring-1 ring-blue-100 transition hover:-translate-y-1 hover:shadow-xl active:translate-y-0`}
               >
                 <div className="flex justify-between gap-3">
-                  <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-black text-teal-700">
+                  <span className="rounded-full bg-white/85 px-3 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100">
                     {visual.accent}
                   </span>
-                  <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700">
+                  <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700 ring-1 ring-pink-100">
                     Kelola
                   </span>
                 </div>
 
                 <div className="mt-8 flex justify-center">
                   <div
-                    className={`grid h-24 w-24 place-items-center rounded-[1.7rem] ${visual.iconBg} text-3xl font-black shadow-sm`}
+                    className={`grid h-24 w-24 place-items-center rounded-3xl ${visual.iconBg} text-3xl font-black shadow-sm ring-1 ring-white/70`}
                   >
                     {visual.badge}
                   </div>
@@ -817,7 +923,7 @@ function ZonesView({
                   </p>
                 </div>
 
-                <div className="mt-6 rounded-2xl bg-[#f7b733] px-4 py-4 text-center text-base font-black text-white shadow-[0_5px_0_#d95f0e]">
+                <div className="mt-6 rounded-2xl bg-amber-500 px-4 py-4 text-center text-base font-black text-slate-950 shadow-[0_5px_0_#b45309]">
                   Buka Zona
                 </div>
               </button>
@@ -828,17 +934,28 @@ function ZonesView({
     );
   }
 
+  const zoneHistory = conditionLogs
+    .map((log) => {
+      const item = activeItems.find((entry) => entry.id === log.itemId);
+
+      return item && item.zoneId === selectedZone.id ? { item, log } : null;
+    })
+    .filter((entry): entry is { item: InventoryItem; log: ConditionLog } =>
+      Boolean(entry),
+    )
+    .slice(0, 6);
+
   return (
     <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <button
             onClick={onBack}
-            className="mb-3 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 shadow-sm"
+            className="mb-3 min-h-11 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 shadow-sm ring-1 ring-blue-100"
           >
             Kembali ke Zona
           </button>
-          <p className="text-sm font-black uppercase text-teal-700">
+          <p className="text-sm font-black uppercase text-blue-700">
             Zona Terpilih
           </p>
           <h2 className="text-3xl font-black text-slate-950">
@@ -846,27 +963,35 @@ function ZonesView({
           </h2>
           <p className="mt-2 text-sm font-bold text-slate-500">{syncStatus}</p>
         </div>
-        <button
-          onClick={onAddItem}
-          className="rounded-2xl bg-[#f7b733] px-5 py-3 text-sm font-black text-white shadow-[0_5px_0_#d95f0e] transition hover:-translate-y-0.5"
-        >
-          Tambah Barang
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            onClick={() => onPrintZone(selectedZone.id)}
+            className="min-h-12 rounded-2xl bg-white px-5 py-3 text-sm font-black text-blue-700 shadow-sm ring-1 ring-blue-100 transition hover:-translate-y-0.5 active:translate-y-0"
+          >
+            Cetak Zona
+          </button>
+          <button
+            onClick={onAddItem}
+            className="min-h-12 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_5px_0_#b45309] transition hover:-translate-y-0.5 hover:bg-amber-400 active:translate-y-0"
+          >
+            Tambah Barang
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-[2rem] bg-white p-4 shadow-sm">
+        <section className="rounded-[1.75rem] border border-blue-100 bg-white p-4 shadow-[var(--shadow-card)]">
           <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="Cari nama, kode, atau lokasi"
-              className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-teal-500"
+              className="h-12 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 text-sm font-bold outline-none focus:border-blue-500"
             />
             <select
               value={conditionFilter}
               onChange={(event) => onUpdateConditionFilter(event.target.value)}
-              className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-teal-500"
+              className="h-12 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 text-sm font-bold outline-none focus:border-blue-500"
             >
               <option value="all">Semua kondisi</option>
               {CONDITION_TYPES.map((condition) => (
@@ -898,10 +1023,10 @@ function ZonesView({
                   );
 
                   return (
-                    <tr key={item.id} className="border-b border-slate-100">
+                    <tr key={item.id} className="border-b border-slate-100 transition hover:bg-blue-50/40">
                       <td className="px-3 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-cyan-50 text-xs font-black text-cyan-700">
+                          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-xs font-black text-blue-700 ring-1 ring-blue-100">
                             {item.assetTag.split("-")[0]}
                           </div>
                           <div>
@@ -948,13 +1073,13 @@ function ZonesView({
                         <div className="flex gap-2">
                           <button
                             onClick={() => onEditItem(item)}
-                            className="rounded-xl bg-pink-50 px-3 py-2 text-xs font-black text-pink-700"
+                            className="min-h-11 rounded-xl bg-pink-50 px-3 py-2 text-xs font-black text-pink-700 ring-1 ring-pink-100"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => onDeleteItem(item.id)}
-                            className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
+                            className="min-h-11 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200"
                           >
                             Hapus
                           </button>
@@ -983,6 +1108,7 @@ function ZonesView({
           {isFormOpen ? (
             <ItemForm
               form={form}
+              formStatus={formStatus}
               onChange={setForm}
               onPhotoChange={onPhotoChange}
               onSubmit={onSubmit}
@@ -990,16 +1116,52 @@ function ZonesView({
               isSaving={isSaving}
             />
           ) : (
-            <InfoPanel title="Ringkasan Zona">
-              <div className="space-y-3 text-sm font-bold text-slate-600">
-                <p>{zoneItems.length} barang aktif ditampilkan.</p>
-                <p>
-                  {getItemsNeedingAttention(zoneItems).length} barang perlu
-                  perhatian.
-                </p>
-                <p>{getLowStockItems(zoneItems).length} barang stok menipis.</p>
-              </div>
-            </InfoPanel>
+            <>
+              <InfoPanel title="Ringkasan Zona">
+                <div className="space-y-3 text-sm font-bold text-slate-600">
+                  <p>{zoneItems.length} barang aktif ditampilkan.</p>
+                  <p>
+                    {getItemsNeedingAttention(zoneItems).length} barang perlu
+                    perhatian.
+                  </p>
+                  <p>{getLowStockItems(zoneItems).length} barang stok menipis.</p>
+                </div>
+              </InfoPanel>
+
+              <InfoPanel title="Riwayat Kondisi">
+                {zoneHistory.length > 0 ? (
+                  <div className="space-y-3">
+                    {zoneHistory.map(({ item, log }) => (
+                      <div
+                        key={log.id}
+                        className="rounded-2xl bg-slate-50 p-3 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-black text-slate-950">
+                              {item.name}
+                            </p>
+                            <p className="mt-1 font-medium text-slate-500">
+                              {log.note}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100">
+                            {conditionLabels[log.conditionId]}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs font-bold text-slate-400">
+                          {log.checkedAt} oleh {log.checkedBy}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-slate-500">
+                    Belum ada riwayat kondisi untuk zona ini.
+                  </p>
+                )}
+              </InfoPanel>
+            </>
           )}
         </aside>
       </div>
@@ -1009,6 +1171,7 @@ function ZonesView({
 
 function ItemForm({
   form,
+  formStatus,
   onChange,
   onPhotoChange,
   onSubmit,
@@ -1016,6 +1179,7 @@ function ItemForm({
   isSaving,
 }: {
   form: ItemFormState;
+  formStatus: string;
   onChange: React.Dispatch<React.SetStateAction<ItemFormState>>;
   onPhotoChange: (file?: File) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -1023,10 +1187,18 @@ function ItemForm({
   isSaving: boolean;
 }) {
   return (
-    <form onSubmit={onSubmit} className="rounded-[2rem] bg-white p-5 shadow-sm">
+    <form
+      onSubmit={onSubmit}
+      className="rounded-[1.75rem] border border-blue-100 bg-white p-5 shadow-[var(--shadow-card)]"
+    >
       <h3 className="text-xl font-black text-slate-950">
         {form.id ? "Edit Barang" : "Tambah Barang"}
       </h3>
+      {formStatus ? (
+        <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          {formStatus}
+        </p>
+      ) : null}
       <div className="mt-4 space-y-3">
         <FormInput
           label="Nama Barang"
@@ -1050,7 +1222,7 @@ function ItemForm({
                 zoneId: event.target.value as InventoryZoneId,
               }))
             }
-            className="mt-1 h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none"
+            className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
           >
             {INVENTORY_ZONES.map((zone) => (
               <option key={zone.id} value={zone.id}>
@@ -1072,7 +1244,7 @@ function ItemForm({
                   typeId: event.target.value as ItemTypeId,
                 }))
               }
-              className="mt-1 h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none"
+              className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
             >
               {ITEM_TYPES.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -1093,7 +1265,7 @@ function ItemForm({
                   conditionId: event.target.value as ConditionTypeId,
                 }))
               }
-              className="mt-1 h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none"
+              className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
             >
               {CONDITION_TYPES.map((condition) => (
                 <option key={condition.id} value={condition.id}>
@@ -1137,27 +1309,27 @@ function ItemForm({
             onChange={(event) =>
               onChange((current) => ({ ...current, notes: event.target.value }))
             }
-            className="mt-1 min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium outline-none"
+            className="mt-1 min-h-24 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm font-medium outline-none focus:border-blue-500"
           />
         </label>
-        <label className="block rounded-2xl border border-dashed border-teal-200 bg-teal-50 p-3">
-          <span className="text-xs font-black uppercase text-teal-700">
+        <label className="block rounded-2xl border border-dashed border-blue-200 bg-blue-50 p-3">
+          <span className="text-xs font-black uppercase text-blue-700">
             Foto Barang WebP
           </span>
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             onChange={(event) => onPhotoChange(event.target.files?.[0])}
             className="mt-2 w-full text-sm font-bold text-slate-600"
           />
           {photoStatus ? (
-            <p className="mt-2 text-xs font-bold text-teal-700">{photoStatus}</p>
+            <p className="mt-2 text-xs font-bold text-blue-700">{photoStatus}</p>
           ) : null}
         </label>
       </div>
       <button
         disabled={isSaving}
-        className="mt-5 w-full rounded-2xl bg-[#f7b733] px-5 py-3 text-sm font-black text-white shadow-[0_5px_0_#d95f0e] disabled:opacity-60"
+        className="mt-5 min-h-12 w-full rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_5px_0_#b45309] transition hover:bg-amber-400 active:translate-y-0 disabled:opacity-60"
       >
         {isSaving ? "Menyimpan..." : "Simpan Barang"}
       </button>
@@ -1183,16 +1355,32 @@ function FormInput({
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-teal-500"
+        inputMode={type === "number" ? "numeric" : undefined}
+        className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
       />
     </label>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string | number }) {
+function MetricCard({
+  label,
+  tone,
+  value,
+}: {
+  label: string;
+  tone: "amber" | "blue" | "green" | "pink";
+  value: string | number;
+}) {
+  const tones = {
+    amber: "bg-amber-50 text-amber-800 border-amber-100",
+    blue: "bg-blue-50 text-blue-800 border-blue-100",
+    green: "bg-emerald-50 text-emerald-800 border-emerald-100",
+    pink: "bg-pink-50 text-pink-800 border-pink-100",
+  };
+
   return (
-    <div className="rounded-[1.7rem] bg-white p-5 shadow-sm">
-      <p className="text-sm font-black text-slate-400">{label}</p>
+    <div className={`rounded-2xl border p-5 shadow-sm ${tones[tone]}`}>
+      <p className="text-sm font-black opacity-80">{label}</p>
       <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
     </div>
   );
@@ -1206,7 +1394,7 @@ function InfoPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[2rem] bg-white p-5 shadow-sm">
+    <section className="rounded-[1.75rem] border border-blue-100 bg-white p-5 shadow-[var(--shadow-card)]">
       <h2 className="mb-4 text-lg font-black text-slate-950">{title}</h2>
       {children}
     </section>
@@ -1215,7 +1403,7 @@ function InfoPanel({
 
 function ItemAlert({ item }: { item: InventoryItem }) {
   return (
-    <div className="rounded-3xl bg-amber-50 p-4">
+    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-black text-slate-950">{item.name}</p>
@@ -1223,7 +1411,7 @@ function ItemAlert({ item }: { item: InventoryItem }) {
             {conditionLabels[item.conditionId]} - {getZoneById(item.zoneId).name}
           </p>
         </div>
-        <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700">
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100">
           {item.assetTag}
         </span>
       </div>
@@ -1243,10 +1431,10 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-[1.2rem] px-4 py-3 text-sm font-black transition ${
+      className={`min-h-11 rounded-xl px-4 py-3 text-sm font-black transition ${
         active
-          ? "bg-white text-teal-700 shadow-sm"
-          : "text-slate-500 hover:text-slate-900"
+          ? "bg-white text-blue-700 shadow-sm"
+          : "text-slate-500 hover:bg-white/60 hover:text-slate-900"
       }`}
     >
       {label}
@@ -1259,7 +1447,7 @@ function ConditionBadge({ item }: { item: InventoryItem }) {
   const isAlert = needsAttention(item);
   const className = isAlert
     ? "bg-red-50 text-red-700"
-    : "bg-teal-50 text-teal-700";
+    : "bg-emerald-50 text-emerald-700";
 
   return (
     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${className}`}>

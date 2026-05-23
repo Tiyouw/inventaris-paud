@@ -1,4 +1,10 @@
 export const WEBP_MIME_TYPE = "image/webp";
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const ACCEPTED_SOURCE_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
 export const DEFAULT_WEBP_QUALITY = 0.82;
 export const DEFAULT_MAX_IMAGE_WIDTH = 1600;
 export const DEFAULT_MAX_IMAGE_HEIGHT = 1600;
@@ -23,7 +29,55 @@ export type WebpCompressionResult = {
   compressionRatio: number;
 };
 
+export type ImageValidationResult =
+  | { valid: true }
+  | { valid: false; message: string };
+
 type ImageSource = Blob | File;
+
+export function validateSourceImage(file: File): ImageValidationResult {
+  if (!file.type.startsWith("image/")) {
+    return {
+      valid: false,
+      message: "File harus berupa gambar.",
+    };
+  }
+
+  if (
+    file.type &&
+    !ACCEPTED_SOURCE_IMAGE_TYPES.includes(
+      file.type as (typeof ACCEPTED_SOURCE_IMAGE_TYPES)[number],
+    )
+  ) {
+    return {
+      valid: false,
+      message: "Gunakan foto JPG, PNG, atau WebP.",
+    };
+  }
+
+  return { valid: true };
+}
+
+export function validateWebpUpload(
+  contentType: string,
+  size: number,
+): ImageValidationResult {
+  if (contentType !== WEBP_MIME_TYPE) {
+    return {
+      valid: false,
+      message: "Upload hanya menerima foto WebP.",
+    };
+  }
+
+  if (size > MAX_UPLOAD_BYTES) {
+    return {
+      valid: false,
+      message: "Ukuran foto WebP maksimal 5 MB.",
+    };
+  }
+
+  return { valid: true };
+}
 
 export async function compressImageToWebp(
   source: ImageSource,

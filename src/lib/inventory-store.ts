@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  CONDITION_TYPES,
   INVENTORY_ZONES,
+  ITEM_TYPES,
   type ConditionLog,
   type ConditionTypeId,
   type InventoryItem,
@@ -81,6 +83,13 @@ export class SupabaseConfigurationError extends Error {
   }
 }
 
+export class InventoryValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InventoryValidationError";
+  }
+}
+
 export async function listInventory(): Promise<InventoryPayload> {
   const supabase = requireSupabaseClient();
   const [zonesResult, itemsResult, logsResult] = await Promise.all([
@@ -133,6 +142,8 @@ export async function listInventory(): Promise<InventoryPayload> {
 export async function createInventoryItem(
   input: SaveInventoryItemInput,
 ): Promise<InventoryItem> {
+  validateInventoryInput(input);
+
   const supabase = requireSupabaseClient();
   const zone = await getZoneBySlug(supabase, input.zoneId);
   const now = new Date().toISOString();
@@ -173,6 +184,8 @@ export async function updateInventoryItem(
   itemId: string,
   input: SaveInventoryItemInput,
 ): Promise<InventoryItem> {
+  validateInventoryInput(input);
+
   const supabase = requireSupabaseClient();
   const zone = await getZoneBySlug(supabase, input.zoneId);
   const existing = await getItemById(supabase, itemId);
@@ -427,4 +440,63 @@ function createStoragePath(fileName = "inventory-photo.webp"): string {
   const webpName = (safeName || "inventory-photo.webp").replace(/\.[^.]+$/, ".webp");
 
   return `items/${Date.now()}-${crypto.randomUUID()}-${webpName}`;
+}
+
+function validateInventoryInput(input: SaveInventoryItemInput): void {
+  const assetTag = input.assetTag?.trim();
+  const name = input.name?.trim();
+  const location = input.location?.trim();
+  const validZones = new Set(INVENTORY_ZONES.map((zone) => zone.id));
+  const validTypes = new Set(ITEM_TYPES.map((type) => type.id));
+  const validConditions = new Set(CONDITION_TYPES.map((condition) => condition.id));
+  const validStatuses = new Set<InventoryStatus>([
+    "available",
+    "checked-out",
+    "reserved",
+    "missing",
+  ]);
+
+  if (!assetTag) {
+    throw new InventoryValidationError("Kode barang wajib diisi.");
+  }
+
+  if (assetTag.length > 40) {
+    throw new InventoryValidationError("Kode barang maksimal 40 karakter.");
+  }
+
+  if (!name) {
+    throw new InventoryValidationError("Nama barang wajib diisi.");
+  }
+
+  if (name.length > 120) {
+    throw new InventoryValidationError("Nama barang maksimal 120 karakter.");
+  }
+
+  if (!location) {
+    throw new InventoryValidationError("Lokasi barang wajib diisi.");
+  }
+
+  if (!validZones.has(input.zoneId)) {
+    throw new InventoryValidationError("Zona barang tidak valid.");
+  }
+
+  if (!validTypes.has(input.typeId)) {
+    throw new InventoryValidationError("Jenis barang tidak valid.");
+  }
+
+  if (!validConditions.has(input.conditionId)) {
+    throw new InventoryValidationError("Kondisi barang tidak valid.");
+  }
+
+  if (!validStatuses.has(input.status)) {
+    throw new InventoryValidationError("Status barang tidak valid.");
+  }
+
+  if (!Number.isInteger(input.quantity) || input.quantity < 0) {
+    throw new InventoryValidationError("Jumlah barang harus angka 0 atau lebih.");
+  }
+
+  if (!Number.isInteger(input.minimumQuantity) || input.minimumQuantity < 0) {
+    throw new InventoryValidationError("Jumlah minimal harus angka 0 atau lebih.");
+  }
 }
