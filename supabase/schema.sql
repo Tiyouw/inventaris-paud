@@ -20,10 +20,12 @@ create table if not exists public.items (
   name text not null,
   type_id text not null default 'equipment',
   category text,
-  condition_id text not null default 'good',
+  condition_id text not null default 'baik',
   status text not null default 'available',
   quantity integer not null default 1,
-  minimum_quantity integer not null default 1,
+  minimum_quantity integer not null default 0,
+  acquisition_date date not null default current_date,
+  source_id text not null default 'bop-paud',
   unit text,
   location_detail text,
   owner text not null default 'PAUD Makerspace',
@@ -40,7 +42,26 @@ create table if not exists public.items (
     type_id in ('equipment', 'tool', 'consumable', 'learning-kit', 'display')
   ),
   constraint items_condition_id_check check (
-    condition_id in ('good', 'needs-repair', 'damaged', 'missing')
+    condition_id in (
+      'baik',
+      'layak-pakai',
+      'rusak-ringan',
+      'rusak-berat',
+      'perlu-perbaikan',
+      'tidak-layak-pakai'
+    )
+  ),
+  constraint items_source_id_check check (
+    source_id in (
+      'bos',
+      'bop-paud',
+      'hibah',
+      'donasi',
+      'pembelian-sekolah',
+      'bantuan-pemerintah',
+      'csr',
+      'swadaya-orang-tua'
+    )
   ),
   constraint items_status_check check (
     status in ('available', 'checked-out', 'reserved', 'missing')
@@ -67,10 +88,24 @@ create table if not exists public.item_condition_logs (
   created_at timestamptz not null default now(),
   constraint item_condition_logs_previous_condition_id_check check (
     previous_condition_id is null
-    or previous_condition_id in ('good', 'needs-repair', 'damaged', 'missing')
+    or previous_condition_id in (
+      'baik',
+      'layak-pakai',
+      'rusak-ringan',
+      'rusak-berat',
+      'perlu-perbaikan',
+      'tidak-layak-pakai'
+    )
   ),
   constraint item_condition_logs_new_condition_id_check check (
-    new_condition_id in ('good', 'needs-repair', 'damaged', 'missing')
+    new_condition_id in (
+      'baik',
+      'layak-pakai',
+      'rusak-ringan',
+      'rusak-berat',
+      'perlu-perbaikan',
+      'tidak-layak-pakai'
+    )
   )
 );
 
@@ -101,6 +136,8 @@ create index if not exists zones_slug_idx on public.zones (slug);
 create index if not exists items_zone_id_idx on public.items (zone_id);
 create index if not exists items_active_zone_idx on public.items (zone_id, is_active);
 create index if not exists items_condition_id_idx on public.items (condition_id);
+create index if not exists items_source_id_idx on public.items (source_id);
+create index if not exists items_acquisition_date_idx on public.items (acquisition_date desc);
 create index if not exists items_status_idx on public.items (status);
 create index if not exists items_type_id_idx on public.items (type_id);
 create index if not exists items_updated_at_idx on public.items (updated_at desc);
@@ -167,6 +204,7 @@ set
 -- Insert demo items only after zones exist, selecting zone_id by zones.slug.
 -- Keep asset_tag unique and use these catalog IDs:
 -- type_id: equipment, tool, consumable, learning-kit, display
--- condition_id: good, needs-repair, damaged, missing
+-- condition_id: baik, layak-pakai, rusak-ringan, rusak-berat, perlu-perbaikan, tidak-layak-pakai
+-- source_id: bos, bop-paud, hibah, donasi, pembelian-sekolah, bantuan-pemerintah, csr, swadaya-orang-tua
 -- status: available, checked-out, reserved, missing
 -- Insert matching item_condition_logs rows after their items exist.

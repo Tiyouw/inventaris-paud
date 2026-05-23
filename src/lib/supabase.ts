@@ -48,5 +48,5 @@ export function getSupabaseServerClient(): SupabaseClient | null {
 }
 
 export function getMissingSupabaseConfigMessage(): string {
-  return "Supabase server environment is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.";
+  return "Konfigurasi server Supabase belum lengkap. Isi NEXT_PUBLIC_SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY.";
 }

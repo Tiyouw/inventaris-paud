@@ -3,12 +3,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CONDITION_TYPES,
   INVENTORY_ZONES,
+  ITEM_SOURCES,
   ITEM_TYPES,
   type ConditionLog,
   type ConditionTypeId,
   type InventoryItem,
   type InventoryStatus,
+  type InventoryZone,
   type InventoryZoneId,
+  type ItemSourceId,
   type ItemTypeId,
 } from "./inventory";
 import {
@@ -20,19 +23,18 @@ import {
 type InventoryPayload = {
   items: InventoryItem[];
   conditionLogs: ConditionLog[];
-  zones: InventoryZonePayload[];
+  zones: InventoryZone[];
   source: "supabase";
-};
-
-type InventoryZonePayload = {
-  id: InventoryZoneId;
-  name: string;
-  description: string;
 };
 
 type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
   id?: string;
   isActive?: boolean;
+};
+
+export type SaveInventoryZoneInput = {
+  name: string;
+  description?: string;
 };
 
 type UploadInventoryPhotoInput = {
@@ -58,6 +60,8 @@ type DbItemRow = {
   status: string;
   quantity: number;
   minimum_quantity: number;
+  acquisition_date: string | null;
+  source_id: string | null;
   location_detail: string | null;
   owner: string | null;
   primary_photo_url: string | null;
@@ -90,6 +94,22 @@ export class InventoryValidationError extends Error {
   }
 }
 
+const CONDITION_LABELS: Record<ConditionTypeId, string> = {
+  baik: "Baik",
+  "layak-pakai": "Layak Pakai",
+  "rusak-ringan": "Rusak Ringan",
+  "rusak-berat": "Rusak Berat",
+  "perlu-perbaikan": "Perlu Perbaikan",
+  "tidak-layak-pakai": "Tidak Layak Pakai",
+};
+
+const LEGACY_CONDITION_MAP: Record<string, ConditionTypeId> = {
+  good: "baik",
+  "needs-repair": "perlu-perbaikan",
+  damaged: "rusak-berat",
+  missing: "tidak-layak-pakai",
+};
+
 export async function listInventory(): Promise<InventoryPayload> {
   const supabase = requireSupabaseClient();
   const [zonesResult, itemsResult, logsResult] = await Promise.all([
@@ -97,7 +117,7 @@ export async function listInventory(): Promise<InventoryPayload> {
     supabase
       .from("items")
       .select(
-        "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
+        "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
       )
       .eq("is_active", true)
       .order("updated_at", { ascending: false }),
@@ -153,7 +173,7 @@ export async function createInventoryItem(
     .from("items")
     .insert(itemToInsert)
     .select(
-      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
+      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
     )
     .single();
 
@@ -166,7 +186,7 @@ export async function createInventoryItem(
     item_id: item.id,
     previous_condition_id: null,
     new_condition_id: item.conditionId,
-    notes: `Barang baru ditambahkan dengan kondisi ${item.conditionId}.`,
+    notes: `Barang baru ditambahkan dengan kondisi ${getConditionLabel(item.conditionId)}.`,
     photo_url: item.photoUrl ?? null,
     checked_by: "Guru",
     changed_by: "Guru",
@@ -196,7 +216,7 @@ export async function updateInventoryItem(
     .update(toDbItemUpdate(input, zone.id, nextCheckedAt))
     .eq("id", itemId)
     .select(
-      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
+      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
     )
     .single();
 
@@ -206,12 +226,14 @@ export async function updateInventoryItem(
 
   const item = mapInventoryItem(updatedItem as DbItemRow, new Map([[zone.id, zone.slug]]));
 
-  if (existing.condition_id !== item.conditionId) {
+  const previousConditionId = normalizeConditionId(existing.condition_id);
+
+  if (previousConditionId !== item.conditionId) {
     const { error: logError } = await supabase.from("item_condition_logs").insert({
       item_id: item.id,
-      previous_condition_id: existing.condition_id,
+      previous_condition_id: previousConditionId,
       new_condition_id: item.conditionId,
-      notes: `Kondisi berubah dari ${existing.condition_id} menjadi ${item.conditionId}.`,
+      notes: `Kondisi berubah dari ${getConditionLabel(previousConditionId)} menjadi ${getConditionLabel(item.conditionId)}.`,
       photo_url: item.photoUrl ?? null,
       checked_by: "Guru",
       changed_by: "Guru",
@@ -242,6 +264,79 @@ export async function softDeleteInventoryItem(itemId: string): Promise<void> {
   }
 }
 
+export async function createInventoryZone(
+  input: SaveInventoryZoneInput,
+): Promise<InventoryZone> {
+  const name = validateZoneInput(input);
+  const supabase = requireSupabaseClient();
+  const slug = await createUniqueZoneSlug(supabase, name);
+
+  const { data, error } = await supabase
+    .from("zones")
+    .insert({
+      name,
+      slug,
+      description: input.description?.trim() || null,
+    })
+    .select("id, name, slug, description")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapZone(data as DbZoneRow);
+}
+
+export async function updateInventoryZone(
+  zoneId: InventoryZoneId,
+  input: SaveInventoryZoneInput,
+): Promise<InventoryZone> {
+  const name = validateZoneInput(input);
+  const supabase = requireSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("zones")
+    .update({
+      name,
+      description: input.description?.trim() || null,
+    })
+    .eq("slug", zoneId)
+    .select("id, name, slug, description")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapZone(data as DbZoneRow);
+}
+
+export async function deleteInventoryZone(zoneId: InventoryZoneId): Promise<void> {
+  const supabase = requireSupabaseClient();
+  const zone = await getZoneBySlug(supabase, zoneId);
+  const { count, error: countError } = await supabase
+    .from("items")
+    .select("id", { count: "exact", head: true })
+    .eq("zone_id", zone.id);
+
+  if (countError) {
+    throw countError;
+  }
+
+  if ((count ?? 0) > 0) {
+    throw new InventoryValidationError(
+      "Zona masih memiliki barang, jadi belum bisa dihapus. Pindahkan atau hapus barangnya dulu.",
+    );
+  }
+
+  const { error } = await supabase.from("zones").delete().eq("id", zone.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function uploadInventoryPhoto({
   content,
   fileName,
@@ -255,7 +350,7 @@ export async function uploadInventoryPhoto({
   }
 
   if (contentType !== "image/webp") {
-    throw new Error("Only WebP inventory photos are supported.");
+    throw new Error("Foto inventaris hanya menerima format WebP.");
   }
 
   const path = createStoragePath(fileName);
@@ -309,7 +404,7 @@ async function getItemById(
   const { data, error } = await supabase
     .from("items")
     .select(
-      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active",
+      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active",
     )
     .eq("id", itemId)
     .single();
@@ -332,9 +427,11 @@ function toDbItemInsert(
     name: input.name,
     type_id: input.typeId,
     condition_id: input.conditionId,
-    status: input.status,
+    status: "available",
     quantity: input.quantity,
-    minimum_quantity: input.minimumQuantity,
+    minimum_quantity: 0,
+    acquisition_date: toTimestamp(input.acquisitionDate) ?? checkedAt,
+    source_id: input.sourceId,
     location_detail: input.location || null,
     owner: input.owner,
     primary_photo_url: input.photoUrl ?? null,
@@ -365,10 +462,12 @@ function mapInventoryItem(
     name: row.name,
     zoneId: getZoneSlug(row, zoneSlugById) as InventoryZoneId,
     typeId: row.type_id as ItemTypeId,
-    conditionId: row.condition_id as ConditionTypeId,
+    conditionId: normalizeConditionId(row.condition_id),
     status: row.status as InventoryStatus,
     quantity: row.quantity,
     minimumQuantity: row.minimum_quantity,
+    acquisitionDate: toDateOnly(row.acquisition_date ?? row.last_checked_at),
+    sourceId: normalizeSourceId(row.source_id),
     location: row.location_detail ?? "",
     owner: row.owner ?? "PAUD Makerspace",
     lastCheckedAt: toDateOnly(row.last_checked_at),
@@ -382,23 +481,27 @@ function mapConditionLog(row: DbConditionLogRow): ConditionLog {
   return {
     id: row.id,
     itemId: row.item_id,
-    conditionId: row.new_condition_id as ConditionTypeId,
+    conditionId: normalizeConditionId(row.new_condition_id),
     checkedAt: toDateOnly(row.checked_at),
     checkedBy: row.checked_by ?? "Guru",
-    note: row.notes ?? "",
+    note: normalizeConditionNote(row.notes ?? ""),
   };
 }
 
-function mapZones(rows: DbZoneRow[]): InventoryZonePayload[] {
+function mapZones(rows: DbZoneRow[]): InventoryZone[] {
   if (rows.length === 0) {
     return [...INVENTORY_ZONES];
   }
 
-  return rows.map((zone) => ({
+  return rows.map(mapZone);
+}
+
+function mapZone(zone: DbZoneRow): InventoryZone {
+  return {
     id: zone.slug as InventoryZoneId,
     name: zone.name,
     description: zone.description ?? "",
-  }));
+  };
 }
 
 function getZoneSlug(row: DbItemRow, zoneSlugById: Map<string, string>): string {
@@ -442,19 +545,106 @@ function createStoragePath(fileName = "inventory-photo.webp"): string {
   return `items/${Date.now()}-${crypto.randomUUID()}-${webpName}`;
 }
 
+function getConditionLabel(conditionId: string): string {
+  const normalizedCondition = normalizeConditionId(conditionId);
+
+  return CONDITION_LABELS[normalizedCondition] ?? conditionId;
+}
+
+function normalizeConditionNote(note: string): string {
+  return note
+    .replace(/\bgood\b/gi, CONDITION_LABELS.baik)
+    .replace(/\bneeds-repair\b/gi, CONDITION_LABELS["perlu-perbaikan"])
+    .replace(/\bdamaged\b/gi, CONDITION_LABELS["rusak-berat"])
+    .replace(/\bmissing\b/gi, CONDITION_LABELS["tidak-layak-pakai"]);
+}
+
+function normalizeConditionId(conditionId: string): ConditionTypeId {
+  return (
+    LEGACY_CONDITION_MAP[conditionId] ??
+    (CONDITION_TYPES.some((condition) => condition.id === conditionId)
+      ? (conditionId as ConditionTypeId)
+      : "baik")
+  );
+}
+
+function normalizeSourceId(sourceId: string | null): ItemSourceId {
+  return ITEM_SOURCES.some((source) => source.id === sourceId)
+    ? (sourceId as ItemSourceId)
+    : "bop-paud";
+}
+
+function validateZoneInput(input: SaveInventoryZoneInput): string {
+  const name = input.name?.trim();
+  const description = input.description?.trim() ?? "";
+
+  if (!name) {
+    throw new InventoryValidationError("Nama zona wajib diisi.");
+  }
+
+  if (name.length > 80) {
+    throw new InventoryValidationError("Nama zona maksimal 80 karakter.");
+  }
+
+  if (description.length > 240) {
+    throw new InventoryValidationError("Deskripsi zona maksimal 240 karakter.");
+  }
+
+  return name;
+}
+
+async function createUniqueZoneSlug(
+  supabase: SupabaseClient,
+  name: string,
+): Promise<string> {
+  const baseSlug = slugifyZoneName(name);
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (await zoneSlugExists(supabase, candidate)) {
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+async function zoneSlugExists(
+  supabase: SupabaseClient,
+  slug: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("zones")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data);
+}
+
+function slugifyZoneName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || `zona-${Date.now()}`;
+}
+
 function validateInventoryInput(input: SaveInventoryItemInput): void {
   const assetTag = input.assetTag?.trim();
   const name = input.name?.trim();
   const location = input.location?.trim();
-  const validZones = new Set(INVENTORY_ZONES.map((zone) => zone.id));
   const validTypes = new Set(ITEM_TYPES.map((type) => type.id));
   const validConditions = new Set(CONDITION_TYPES.map((condition) => condition.id));
-  const validStatuses = new Set<InventoryStatus>([
-    "available",
-    "checked-out",
-    "reserved",
-    "missing",
-  ]);
+  const validSources = new Set(ITEM_SOURCES.map((source) => source.id));
 
   if (!assetTag) {
     throw new InventoryValidationError("Kode barang wajib diisi.");
@@ -476,8 +666,8 @@ function validateInventoryInput(input: SaveInventoryItemInput): void {
     throw new InventoryValidationError("Lokasi barang wajib diisi.");
   }
 
-  if (!validZones.has(input.zoneId)) {
-    throw new InventoryValidationError("Zona barang tidak valid.");
+  if (!input.zoneId?.trim()) {
+    throw new InventoryValidationError("Zona barang wajib dipilih.");
   }
 
   if (!validTypes.has(input.typeId)) {
@@ -488,15 +678,17 @@ function validateInventoryInput(input: SaveInventoryItemInput): void {
     throw new InventoryValidationError("Kondisi barang tidak valid.");
   }
 
-  if (!validStatuses.has(input.status)) {
-    throw new InventoryValidationError("Status barang tidak valid.");
+  if (!input.acquisitionDate || Number.isNaN(Date.parse(input.acquisitionDate))) {
+    throw new InventoryValidationError("Tanggal perolehan wajib diisi.");
+  }
+
+  if (!validSources.has(input.sourceId)) {
+    throw new InventoryValidationError("Asal barang tidak valid.");
   }
 
   if (!Number.isInteger(input.quantity) || input.quantity < 0) {
     throw new InventoryValidationError("Jumlah barang harus angka 0 atau lebih.");
   }
 
-  if (!Number.isInteger(input.minimumQuantity) || input.minimumQuantity < 0) {
-    throw new InventoryValidationError("Jumlah minimal harus angka 0 atau lebih.");
-  }
 }
+

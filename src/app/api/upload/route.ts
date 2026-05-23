@@ -32,7 +32,7 @@ async function readFormUpload(request: Request) {
   const file = formData.get("file");
 
   if (!(file instanceof File)) {
-    throw new Error("Upload requires a WebP file field named file.");
+    throw new Error("Unggah foto membutuhkan file WebP.");
   }
 
   const validation = validateWebpUpload(file.type || "image/webp", file.size);
@@ -53,7 +53,7 @@ async function readJsonUpload(request: Request) {
   const rawBase64 = payload.base64 ?? payload.data;
 
   if (!rawBase64) {
-    throw new Error("Upload requires a base64 or data field.");
+    throw new Error("Unggah foto membutuhkan data gambar.");
   }
 
   const base64 = rawBase64.includes(",")
@@ -107,7 +107,7 @@ function handleUploadError(error: unknown) {
   return NextResponse.json(
     {
       error: "UPLOAD_REQUEST_FAILED",
-      message: error instanceof Error ? error.message : "Upload request failed.",
+      message: error instanceof Error ? error.message : "Unggah foto gagal.",
     },
     { status: 500 },
   );

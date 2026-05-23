@@ -1,22 +1,22 @@
 import {
   CONDITION_TYPES,
   INVENTORY_ZONES,
+  ITEM_SOURCES,
   ITEM_TYPES,
   getConditionById,
   getItemTypeById,
-  getZoneById,
-  isLowStock,
   needsAttention,
 } from "./inventory";
 import type {
   ConditionTypeId,
   InventoryItem,
-  InventoryStatus,
+  InventoryZone,
   InventoryZoneId,
+  ItemSourceId,
   ItemTypeId,
 } from "./inventory";
 
-export type InventoryReportFlag = "low-stock" | "needs-attention" | "missing-photo";
+export type InventoryReportFlag = "needs-attention" | "missing-photo";
 
 export type InventoryReportRow = {
   itemId: string;
@@ -28,9 +28,11 @@ export type InventoryReportRow = {
   typeName: string;
   conditionId: ConditionTypeId;
   conditionName: string;
-  status: InventoryStatus;
   quantity: number;
   minimumQuantity: number;
+  acquisitionDate: string;
+  sourceId: ItemSourceId;
+  sourceName: string;
   location: string;
   owner: string;
   lastCheckedAt: string;
@@ -51,13 +53,12 @@ export type InventoryReportSummary = {
   totalUnits: number;
   activeItems: number;
   inactiveItems: number;
-  lowStockItems: number;
   needsAttentionItems: number;
   itemsWithPhotos: number;
   byZone: InventoryReportCount[];
   byType: InventoryReportCount[];
   byCondition: InventoryReportCount[];
-  byStatus: InventoryReportCount[];
+  bySource: InventoryReportCount[];
 };
 
 export type InventoryPhotoAppendixEntry = {
@@ -83,20 +84,16 @@ export type InventoryReportOptions = {
   title?: string;
   generatedAt?: string;
   includeInactive?: boolean;
-};
-
-const STATUS_LABELS: Record<InventoryStatus, string> = {
-  available: "Tersedia",
-  "checked-out": "Dipakai",
-  reserved: "Dipesan",
-  missing: "Hilang",
+  zones?: InventoryZone[];
 };
 
 const CONDITION_LABELS: Record<ConditionTypeId, string> = {
-  good: "Baik",
-  "needs-repair": "Perlu Perbaikan",
-  damaged: "Rusak",
-  missing: "Hilang",
+  baik: "Baik",
+  "layak-pakai": "Layak Pakai",
+  "rusak-ringan": "Rusak Ringan",
+  "rusak-berat": "Rusak Berat",
+  "perlu-perbaikan": "Perlu Perbaikan",
+  "tidak-layak-pakai": "Tidak Layak Pakai",
 };
 
 const TYPE_LABELS: Record<ItemTypeId, string> = {
@@ -104,13 +101,23 @@ const TYPE_LABELS: Record<ItemTypeId, string> = {
   tool: "Alat",
   consumable: "Bahan Habis Pakai",
   "learning-kit": "Kit Belajar",
-  display: "Display",
+  display: "Pajangan",
 };
 
 const FLAG_LABELS: Record<InventoryReportFlag, string> = {
-  "low-stock": "Stok Menipis",
   "needs-attention": "Perlu Perhatian",
   "missing-photo": "Belum Ada Foto",
+};
+
+const SOURCE_LABELS: Record<ItemSourceId, string> = {
+  bos: "BOS",
+  "bop-paud": "BOP PAUD",
+  hibah: "Hibah",
+  donasi: "Donasi",
+  "pembelian-sekolah": "Pembelian Sekolah",
+  "bantuan-pemerintah": "Bantuan Pemerintah",
+  csr: "CSR",
+  "swadaya-orang-tua": "Swadaya Orang Tua",
 };
 
 export function createInventoryReport(
@@ -118,21 +125,23 @@ export function createInventoryReport(
   options: InventoryReportOptions = {},
 ): InventoryReport {
   const reportItems = filterReportItems(items, options.includeInactive ?? false);
+  const zones = options.zones ?? INVENTORY_ZONES;
 
   return {
-    title: options.title ?? "Inventory Report",
+    title: options.title ?? "Laporan Inventaris",
     generatedAt: options.generatedAt ?? new Date().toISOString(),
-    rows: createInventoryReportRows(reportItems),
-    summary: summarizeInventoryForReport(reportItems),
-    photoAppendix: createPhotoAppendixData(reportItems),
+    rows: createInventoryReportRows(reportItems, zones),
+    summary: summarizeInventoryForReport(reportItems, zones),
+    photoAppendix: createPhotoAppendixData(reportItems, zones),
   };
 }
 
 export function createInventoryReportRows(
   items: InventoryItem[],
+  zones: InventoryZone[] = INVENTORY_ZONES,
 ): InventoryReportRow[] {
   return items.map((item) => {
-    const zone = getZoneById(item.zoneId);
+    const zone = getReportZone(item.zoneId, zones);
     const type = getItemTypeById(item.typeId);
     const condition = getConditionById(item.conditionId);
 
@@ -146,9 +155,11 @@ export function createInventoryReportRows(
       typeName: TYPE_LABELS[type.id],
       conditionId: item.conditionId,
       conditionName: CONDITION_LABELS[condition.id],
-      status: item.status,
       quantity: item.quantity,
       minimumQuantity: item.minimumQuantity,
+      acquisitionDate: item.acquisitionDate,
+      sourceId: item.sourceId,
+      sourceName: SOURCE_LABELS[item.sourceId],
       location: item.location,
       owner: item.owner,
       lastCheckedAt: item.lastCheckedAt,
@@ -285,17 +296,27 @@ export function createInventoryReportHtml(report: InventoryReport): string {
         margin-top: 8px;
       }
       .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
         margin-top: 18px;
       }
-      button {
+      .button {
         background: #f7b733;
         border: 0;
         border-radius: 14px;
         color: white;
         cursor: pointer;
+        display: inline-block;
         font-size: 14px;
         font-weight: 800;
         padding: 12px 18px;
+        text-decoration: none;
+      }
+      .button.secondary {
+        background: #ffffff;
+        border: 1px solid #dbe9de;
+        color: #2f7d68;
       }
       @media print {
         body {
@@ -327,20 +348,22 @@ export function createInventoryReportHtml(report: InventoryReport): string {
       <header>
         <h1>${escapeHtml(report.title)}</h1>
         <p class="muted">Dibuat pada ${escapeHtml(generatedAt)}. Gunakan dialog cetak browser untuk menyimpan sebagai PDF.</p>
-        <div class="actions"><button onclick="window.print()">Cetak / Simpan PDF</button></div>
+        <div class="actions">
+          <a class="button secondary" href="/">Kembali ke Aplikasi</a>
+          <button class="button" onclick="window.print()">Cetak / Simpan PDF</button>
+        </div>
       </header>
       <section>
         <h2>Ringkasan</h2>
         <div class="summary">
           ${createMetricHtml("Barang Aktif", report.summary.activeItems)}
           ${createMetricHtml("Total Unit", report.summary.totalUnits)}
-          ${createMetricHtml("Stok Menipis", report.summary.lowStockItems)}
           ${createMetricHtml("Perlu Perhatian", report.summary.needsAttentionItems)}
         </div>
         <div class="breakdown">
           ${createCountTableHtml("Per Zona", report.summary.byZone)}
           ${createCountTableHtml("Per Kondisi", report.summary.byCondition)}
-          ${createCountTableHtml("Per Status", report.summary.byStatus)}
+          ${createCountTableHtml("Per Asal Barang", report.summary.bySource)}
         </div>
       </section>
       <section class="table-section">
@@ -358,29 +381,35 @@ export function createInventoryReportHtml(report: InventoryReport): string {
 
 export function summarizeInventoryForReport(
   items: InventoryItem[],
+  zones: InventoryZone[] = INVENTORY_ZONES,
 ): InventoryReportSummary {
   return {
     totalItems: items.length,
     totalUnits: sumUnits(items),
     activeItems: items.filter((item) => item.isActive).length,
     inactiveItems: items.filter((item) => !item.isActive).length,
-    lowStockItems: items.filter(isLowStock).length,
     needsAttentionItems: items.filter(needsAttention).length,
     itemsWithPhotos: items.filter((item) => Boolean(item.photoUrl)).length,
-    byZone: countByCatalog(items, INVENTORY_ZONES, "zoneId"),
-    byType: countByCatalog(items, ITEM_TYPES, "typeId"),
-    byCondition: countByCatalog(items, CONDITION_TYPES, "conditionId"),
-    byStatus: countByStatus(items),
+    byZone: countByCatalog(items, zones, "zoneId"),
+    byType: countByCatalog(items, ITEM_TYPES, "typeId", TYPE_LABELS),
+    byCondition: countByCatalog(
+      items,
+      CONDITION_TYPES,
+      "conditionId",
+      CONDITION_LABELS,
+    ),
+    bySource: countByCatalog(items, ITEM_SOURCES, "sourceId", SOURCE_LABELS),
   };
 }
 
 export function createPhotoAppendixData(
   items: InventoryItem[],
+  zones: InventoryZone[] = INVENTORY_ZONES,
 ): InventoryPhotoAppendixEntry[] {
   return items
     .filter((item) => Boolean(item.photoUrl))
     .map((item, index) => {
-      const zone = getZoneById(item.zoneId);
+      const zone = getReportZone(item.zoneId, zones);
 
       return {
         appendixNumber: index + 1,
@@ -395,12 +424,23 @@ export function createPhotoAppendixData(
     });
 }
 
+function getReportZone(
+  zoneId: InventoryZoneId,
+  zones: InventoryZone[],
+): InventoryZone {
+  return (
+    zones.find((zone) => zone.id === zoneId) ??
+    INVENTORY_ZONES.find((zone) => zone.id === zoneId) ??
+    {
+      id: zoneId,
+      name: zoneId,
+      description: "",
+    }
+  );
+}
+
 export function getReportFlags(item: InventoryItem): InventoryReportFlag[] {
   const flags: InventoryReportFlag[] = [];
-
-  if (isLowStock(item)) {
-    flags.push("low-stock");
-  }
 
   if (needsAttention(item)) {
     flags.push("needs-attention");
@@ -420,20 +460,6 @@ function filterReportItems(
   return includeInactive ? [...items] : items.filter((item) => item.isActive);
 }
 
-function countByStatus(items: InventoryItem[]): InventoryReportCount[] {
-  return Object.entries(STATUS_LABELS).map(([id, name]) => {
-    const status = id as InventoryStatus;
-    const matchingItems = items.filter((item) => item.status === status);
-
-    return {
-      id,
-      name,
-      count: matchingItems.length,
-      units: sumUnits(matchingItems),
-    };
-  });
-}
-
 function countByCatalog<
   TCatalog extends ReadonlyArray<{ id: string; name: string }>,
   TKey extends keyof InventoryItem,
@@ -441,13 +467,14 @@ function countByCatalog<
   items: InventoryItem[],
   catalog: TCatalog,
   key: TKey,
+  labels?: Partial<Record<string, string>>,
 ): InventoryReportCount[] {
   return catalog.map((entry) => {
     const matchingItems = items.filter((item) => item[key] === entry.id);
 
     return {
       id: entry.id,
-      name: entry.name,
+      name: labels?.[entry.id] ?? entry.name,
       count: matchingItems.length,
       units: sumUnits(matchingItems),
     };
@@ -501,11 +528,11 @@ function createRowsTableHtml(rows: InventoryReportRow[]): string {
       (row) => `<tr>
         <td><strong>${escapeHtml(row.name)}</strong><br /><span class="muted">${escapeHtml(row.assetTag)}</span></td>
         <td>${escapeHtml(row.zoneName)}</td>
-        <td>${escapeHtml(row.typeName)}</td>
-        <td>${row.quantity} / min ${row.minimumQuantity}</td>
+        <td>${escapeHtml(row.acquisitionDate)}</td>
+        <td>${row.quantity}</td>
+        <td>${escapeHtml(row.sourceName)}</td>
         <td>${escapeHtml(row.conditionName)}</td>
-        <td>${escapeHtml(STATUS_LABELS[row.status])}</td>
-        <td>${escapeHtml(row.location)}</td>
+        <td>${escapeHtml(row.notes || row.location || "-")}</td>
         <td>${row.flags.map((flag) => `<span class="tag">${escapeHtml(FLAG_LABELS[flag])}</span>`).join("")}</td>
       </tr>`,
     )
@@ -516,12 +543,12 @@ function createRowsTableHtml(rows: InventoryReportRow[]): string {
       <tr>
         <th>Barang</th>
         <th>Zona</th>
-        <th>Jenis</th>
-        <th>Jumlah</th>
+        <th>Tanggal Perolehan</th>
+        <th>Jumlah Unit</th>
+        <th>Asal Barang</th>
         <th>Kondisi</th>
-        <th>Status</th>
-        <th>Lokasi</th>
         <th>Catatan</th>
+        <th>Foto</th>
       </tr>
     </thead>
     <tbody>${body}</tbody>

@@ -2,35 +2,35 @@
 
 :root {
   color-scheme: light;
-  --background: #eff6ff;
+  --background: #f7fbf6;
   --foreground: #0f172a;
   --surface: #ffffff;
-  --surface-soft: #f1f5fd;
-  --border-soft: #e4ecfc;
-  --brand: #2563eb;
-  --brand-strong: #1d4ed8;
-  --accent: #f59e0b;
-  --accent-pink: #ec4899;
+  --surface-soft: #edf7f1;
+  --border-soft: #dfeee6;
+  --brand: #2f7d68;
+  --brand-strong: #1f5f50;
+  --accent: #f2b84b;
+  --accent-pink: #c75d85;
   --danger: #dc2626;
-  --shadow-soft: 0 18px 45px rgba(37, 99, 235, 0.1);
-  --shadow-card: 0 14px 30px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 18px 45px rgba(31, 95, 80, 0.11);
+  --shadow-card: 0 12px 26px rgba(44, 76, 63, 0.09);
   --radius-base: 1rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: "Museo Sans Rounded", var(--font-nunito), "Arial Rounded MT Bold", Arial, sans-serif;
+  --font-mono: var(--font-inter);
 }
 
 body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
-  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 48%, #fdf2f8 100%);
+  background: linear-gradient(180deg, #f7fbf6 0%, #fffaf0 52%, #f7fbf6 100%);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Museo Sans Rounded", var(--font-nunito), "Arial Rounded MT Bold", Arial, sans-serif;
   line-height: 1.5;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -49,7 +49,7 @@ html {
 }
 
 ::selection {
-  background: rgba(245, 158, 11, 0.35);
+  background: rgba(242, 184, 75, 0.42);
   color: var(--foreground);
 }
 
@@ -80,7 +80,7 @@ textarea {
 
 a {
   color: var(--brand-strong);
-  text-decoration-color: rgba(20, 117, 107, 0.35);
+  text-decoration-color: rgba(31, 95, 80, 0.35);
   text-underline-offset: 0.2em;
 }
 
@@ -97,8 +97,15 @@ canvas {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.45);
+  outline: 3px solid rgba(47, 125, 104, 0.45);
   outline-offset: 3px;
+}
+
+table,
+input,
+select,
+textarea {
+  font-family: var(--font-inter), Arial, sans-serif;
 }
 
 @media (prefers-reduced-motion: reduce) {

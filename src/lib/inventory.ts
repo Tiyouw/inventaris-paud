@@ -1,3 +1,11 @@
+export type InventoryZone = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type InventoryZoneId = string;
+
 export const INVENTORY_ZONES = [
   {
     id: "mini-garden",
@@ -24,71 +32,93 @@ export const INVENTORY_ZONES = [
     name: "Eco Upcycle",
     description: "Reusable materials, recycling tools, and upcycling project equipment.",
   },
-] as const;
+] satisfies InventoryZone[];
 
 export const ITEM_TYPES = [
   {
     id: "equipment",
-    name: "Equipment",
+    name: "Peralatan",
     restockable: false,
   },
   {
     id: "tool",
-    name: "Tool",
+    name: "Alat",
     restockable: false,
   },
   {
     id: "consumable",
-    name: "Consumable",
+    name: "Bahan Habis Pakai",
     restockable: true,
   },
   {
     id: "learning-kit",
-    name: "Learning Kit",
+    name: "Kit Belajar",
     restockable: false,
   },
   {
     id: "display",
-    name: "Display",
+    name: "Pajangan",
     restockable: true,
   },
 ] as const;
 
 export const CONDITION_TYPES = [
   {
-    id: "good",
-    name: "Good",
+    id: "baik",
+    name: "Baik",
     severity: 0,
     serviceable: true,
   },
   {
-    id: "needs-repair",
-    name: "Needs Repair",
+    id: "layak-pakai",
+    name: "Layak Pakai",
+    severity: 1,
+    serviceable: true,
+  },
+  {
+    id: "rusak-ringan",
+    name: "Rusak Ringan",
     severity: 2,
     serviceable: false,
   },
   {
-    id: "damaged",
-    name: "Damaged",
+    id: "rusak-berat",
+    name: "Rusak Berat",
+    severity: 4,
+    serviceable: false,
+  },
+  {
+    id: "perlu-perbaikan",
+    name: "Perlu Perbaikan",
     severity: 3,
     serviceable: false,
   },
   {
-    id: "missing",
-    name: "Missing",
-    severity: 4,
+    id: "tidak-layak-pakai",
+    name: "Tidak Layak Pakai",
+    severity: 5,
     serviceable: false,
   },
 ] as const;
 
-export type InventoryZone = (typeof INVENTORY_ZONES)[number];
-export type InventoryZoneId = InventoryZone["id"];
+export const ITEM_SOURCES = [
+  { id: "bos", name: "BOS" },
+  { id: "bop-paud", name: "BOP PAUD" },
+  { id: "hibah", name: "Hibah" },
+  { id: "donasi", name: "Donasi" },
+  { id: "pembelian-sekolah", name: "Pembelian Sekolah" },
+  { id: "bantuan-pemerintah", name: "Bantuan Pemerintah" },
+  { id: "csr", name: "CSR" },
+  { id: "swadaya-orang-tua", name: "Swadaya Orang Tua" },
+] as const;
 
 export type ItemType = (typeof ITEM_TYPES)[number];
 export type ItemTypeId = ItemType["id"];
 
 export type ConditionType = (typeof CONDITION_TYPES)[number];
 export type ConditionTypeId = ConditionType["id"];
+export type ItemSource = (typeof ITEM_SOURCES)[number];
+export type ItemSourceId = ItemSource["id"];
 
 export type InventoryStatus = "available" | "checked-out" | "reserved" | "missing";
 
@@ -102,6 +132,8 @@ export type InventoryItem = {
   status: InventoryStatus;
   quantity: number;
   minimumQuantity: number;
+  acquisitionDate: string;
+  sourceId: ItemSourceId;
   location: string;
   owner: string;
   lastCheckedAt: string;
@@ -157,10 +189,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Child-Safe Planter Kit",
     zoneId: "mini-garden",
     typeId: "learning-kit",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 8,
     minimumQuantity: 6,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Mini Garden Shelf A",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-20",
@@ -173,10 +207,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Mini Watering Cans",
     zoneId: "mini-garden",
     typeId: "tool",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 5,
     minimumQuantity: 5,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Mini Garden Outdoor Rack",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-18",
@@ -188,10 +224,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Standing Art Easel",
     zoneId: "art-gallery",
     typeId: "equipment",
-    conditionId: "needs-repair",
+    conditionId: "perlu-perbaikan",
     status: "available",
     quantity: 2,
     minimumQuantity: 2,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Art Gallery Wall",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-17",
@@ -204,10 +242,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Large Crayon Set",
     zoneId: "art-gallery",
     typeId: "consumable",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 16,
     minimumQuantity: 20,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Art Supply Drawer 1",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-19",
@@ -220,10 +260,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Animal Costume Rack",
     zoneId: "biodiversity-drama",
     typeId: "display",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 1,
     minimumQuantity: 1,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Drama Corner",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-16",
@@ -235,10 +277,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Nature Magnifier Set",
     zoneId: "biodiversity-drama",
     typeId: "learning-kit",
-    conditionId: "damaged",
+    conditionId: "rusak-berat",
     status: "available",
     quantity: 4,
     minimumQuantity: 4,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Biodiversity Observation Bin",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-14",
@@ -251,10 +295,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Balance Scale",
     zoneId: "steam-lab",
     typeId: "equipment",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 3,
     minimumQuantity: 2,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "STEAM Lab Table",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-21",
@@ -266,10 +312,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Magnetic Building Blocks",
     zoneId: "steam-lab",
     typeId: "learning-kit",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 10,
     minimumQuantity: 8,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "STEAM Lab Cabinet B",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-15",
@@ -281,10 +329,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Child-Safe Recycle Scissors",
     zoneId: "eco-upcycle",
     typeId: "tool",
-    conditionId: "missing",
-    status: "missing",
+    conditionId: "tidak-layak-pakai",
+    status: "available",
     quantity: 3,
     minimumQuantity: 8,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Eco Upcycle Tool Bin",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-12",
@@ -297,10 +347,12 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     name: "Clean Cardboard Stock",
     zoneId: "eco-upcycle",
     typeId: "consumable",
-    conditionId: "good",
+    conditionId: "baik",
     status: "available",
     quantity: 24,
     minimumQuantity: 20,
+    acquisitionDate: "2026-05-01",
+    sourceId: "bop-paud",
     location: "Eco Upcycle Material Shelf",
     owner: "PAUD Makerspace",
     lastCheckedAt: "2026-05-20",
@@ -312,7 +364,7 @@ export const CONDITION_LOGS: ConditionLog[] = [
   {
     id: "log-001",
     itemId: "item-planter-kit-01",
-    conditionId: "good",
+    conditionId: "baik",
     checkedAt: "2026-05-20",
     checkedBy: "Rina",
     note: "All pots and child-safe tools are clean and labeled.",
@@ -320,7 +372,7 @@ export const CONDITION_LOGS: ConditionLog[] = [
   {
     id: "log-002",
     itemId: "item-art-easel-01",
-    conditionId: "needs-repair",
+    conditionId: "perlu-perbaikan",
     checkedAt: "2026-05-17",
     checkedBy: "Dimas",
     note: "One clamp is loose; easel remains usable with supervision.",
@@ -328,7 +380,7 @@ export const CONDITION_LOGS: ConditionLog[] = [
   {
     id: "log-003",
     itemId: "item-magnifier-01",
-    conditionId: "damaged",
+    conditionId: "rusak-berat",
     checkedAt: "2026-05-14",
     checkedBy: "Nadia",
     note: "Scratched lenses found after outdoor observation activity.",
@@ -336,7 +388,7 @@ export const CONDITION_LOGS: ConditionLog[] = [
   {
     id: "log-004",
     itemId: "item-balance-scale-01",
-    conditionId: "good",
+    conditionId: "baik",
     checkedAt: "2026-05-21",
     checkedBy: "Rina",
     note: "Bowls balanced properly during test activity.",
@@ -344,7 +396,7 @@ export const CONDITION_LOGS: ConditionLog[] = [
   {
     id: "log-005",
     itemId: "item-recycle-scissors-01",
-    conditionId: "missing",
+    conditionId: "tidak-layak-pakai",
     checkedAt: "2026-05-12",
     checkedBy: "Dimas",
     note: "Only three scissors found in the tool bin.",
@@ -358,9 +410,10 @@ const SERVICEABLE_CONDITION_IDS = new Set<ConditionTypeId>(
 );
 
 const ATTENTION_CONDITION_IDS = new Set<ConditionTypeId>([
-  "needs-repair",
-  "damaged",
-  "missing",
+  "rusak-ringan",
+  "rusak-berat",
+  "perlu-perbaikan",
+  "tidak-layak-pakai",
 ]);
 
 export function getZoneById(zoneId: InventoryZoneId): InventoryZone {
@@ -387,7 +440,7 @@ export function isServiceable(item: InventoryItem): boolean {
 }
 
 export function needsAttention(item: InventoryItem): boolean {
-  return item.status === "missing" || ATTENTION_CONDITION_IDS.has(item.conditionId);
+  return ATTENTION_CONDITION_IDS.has(item.conditionId);
 }
 
 export function getAvailableUnits(items: InventoryItem[] = INVENTORY_ITEMS): number {
@@ -454,9 +507,10 @@ export function getDashboardStats(
     totalUnits: summary.totalUnits,
     availableRate: roundToPercent(availableRate),
     lowStockCount: summary.lowStockItems,
-    repairQueueCount: items.filter((item) => item.conditionId === "needs-repair")
+    repairQueueCount: items.filter((item) => item.conditionId === "perlu-perbaikan")
       .length,
-    missingCount: items.filter((item) => item.status === "missing").length,
+    missingCount: items.filter((item) => item.conditionId === "tidak-layak-pakai")
+      .length,
     recentlyCheckedCount: countRecentlyChecked(items, today, 7),
   };
 }
@@ -501,10 +555,9 @@ export function sortItemsByAttention(
 
 function getAttentionScore(item: InventoryItem): number {
   const condition = getConditionById(item.conditionId);
-  const statusScore = item.status === "missing" ? 5 : item.status === "reserved" ? 1 : 0;
   const stockScore = isLowStock(item) ? 3 : 0;
 
-  return condition.severity + statusScore + stockScore;
+  return condition.severity + stockScore;
 }
 
 function sumUnits(items: InventoryItem[]): number {
@@ -529,3 +582,6 @@ function countByCatalog<
 function roundToPercent(value: number): number {
   return Math.round(value * 100);
 }
+
+
+

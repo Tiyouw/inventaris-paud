@@ -7,32 +7,32 @@ import {
   CONDITION_TYPES,
   INVENTORY_ITEMS,
   INVENTORY_ZONES,
+  ITEM_SOURCES,
   ITEM_TYPES,
   type ConditionLog,
   type ConditionTypeId,
   type InventoryItem,
-  type InventoryStatus,
+  type InventoryZone,
   type InventoryZoneId,
+  type ItemSourceId,
   type ItemTypeId,
   getConditionById,
   getDashboardStats,
   getItemTypeById,
   getItemsNeedingAttention,
-  getLowStockItems,
-  getMostRecentConditionLog,
-  getZoneById,
-  isLowStock,
   needsAttention,
-  sortItemsByAttention,
-  summarizeInventory,
 } from "@/lib/inventory";
 import {
   createInventoryItem,
+  createInventoryZone,
+  deleteInventoryZone,
   fetchInventory,
   softDeleteInventoryItem,
   updateInventoryItem,
+  updateInventoryZone,
   uploadInventoryPhoto,
   type SaveInventoryItemInput,
+  type SaveInventoryZoneInput,
 } from "@/lib/api-client";
 import { compressImageToWebp, validateSourceImage } from "@/lib/media";
 
@@ -45,26 +45,33 @@ type ItemFormState = {
   zoneId: InventoryZoneId;
   typeId: ItemTypeId;
   conditionId: ConditionTypeId;
-  status: InventoryStatus;
   quantity: string;
-  minimumQuantity: string;
+  acquisitionDate: string;
+  sourceId: ItemSourceId;
   location: string;
   notes: string;
   photoUrl?: string;
 };
 
-const conditionLabels: Record<ConditionTypeId, string> = {
-  good: "Baik",
-  "needs-repair": "Perlu Perbaikan",
-  damaged: "Rusak",
-  missing: "Hilang",
+type ToastState = {
+  id: number;
+  tone: "error" | "success";
+  message: string;
 };
 
-const statusLabels: Record<InventoryStatus, string> = {
-  available: "Tersedia",
-  "checked-out": "Dipakai",
-  reserved: "Dipesan",
-  missing: "Hilang",
+type ZoneFormState = {
+  id?: InventoryZoneId;
+  name: string;
+  description: string;
+};
+
+const conditionLabels: Record<ConditionTypeId, string> = {
+  baik: "Baik",
+  "layak-pakai": "Layak Pakai",
+  "rusak-ringan": "Rusak Ringan",
+  "rusak-berat": "Rusak Berat",
+  "perlu-perbaikan": "Perlu Perbaikan",
+  "tidak-layak-pakai": "Tidak Layak Pakai",
 };
 
 const typeLabels: Record<ItemTypeId, string> = {
@@ -72,49 +79,78 @@ const typeLabels: Record<ItemTypeId, string> = {
   tool: "Alat",
   consumable: "Bahan Habis Pakai",
   "learning-kit": "Kit Belajar",
-  display: "Display",
+  display: "Pajangan",
 };
 
-const zoneVisuals: Record<
-  InventoryZoneId,
-  {
-    badge: string;
-    theme: string;
-    iconBg: string;
-    accent: string;
-  }
-> = {
-  "mini-garden": {
-    badge: "MG",
-    theme: "from-emerald-50 via-lime-50 to-cyan-50",
-    iconBg: "bg-emerald-100 text-emerald-700",
-    accent: "LINGKUNGAN",
-  },
-  "art-gallery": {
-    badge: "AG",
-    theme: "from-rose-50 via-pink-50 to-amber-50",
-    iconBg: "bg-pink-100 text-pink-700",
-    accent: "KREATIF",
-  },
-  "biodiversity-drama": {
-    badge: "BD",
-    theme: "from-sky-50 via-emerald-50 to-violet-50",
-    iconBg: "bg-sky-100 text-sky-700",
-    accent: "CERITA",
-  },
-  "steam-lab": {
-    badge: "SL",
-    theme: "from-indigo-50 via-sky-50 to-orange-50",
-    iconBg: "bg-indigo-100 text-indigo-700",
-    accent: "EKSPERIMEN",
-  },
-  "eco-upcycle": {
-    badge: "EU",
-    theme: "from-amber-50 via-yellow-50 to-emerald-50",
-    iconBg: "bg-amber-100 text-amber-800",
-    accent: "DAUR ULANG",
-  },
+const sourceLabels: Record<ItemSourceId, string> = {
+  bos: "BOS",
+  "bop-paud": "BOP PAUD",
+  hibah: "Hibah",
+  donasi: "Donasi",
+  "pembelian-sekolah": "Pembelian Sekolah",
+  "bantuan-pemerintah": "Bantuan Pemerintah",
+  csr: "CSR",
+  "swadaya-orang-tua": "Swadaya Orang Tua",
 };
+
+const defaultZoneVisuals = [
+  {
+    id: "mini-garden",
+    badge: "MG",
+    theme: "bg-[#eef8ef]",
+    iconBg: "bg-[#d3f0dc] text-[#27684f]",
+  },
+  {
+    id: "art-gallery",
+    badge: "AG",
+    theme: "bg-[#fff0f5]",
+    iconBg: "bg-[#f8d9e7] text-[#9d3e67]",
+  },
+  {
+    id: "biodiversity-drama",
+    badge: "BD",
+    theme: "bg-[#eef7fb]",
+    iconBg: "bg-[#d8edf7] text-[#2a6f86]",
+  },
+  {
+    id: "steam-lab",
+    badge: "SL",
+    theme: "bg-[#f1f0ff]",
+    iconBg: "bg-[#dedcff] text-[#514ba5]",
+  },
+  {
+    id: "eco-upcycle",
+    badge: "EU",
+    theme: "bg-[#fff7df]",
+    iconBg: "bg-[#f8e9b7] text-[#8a5a13]",
+  },
+];
+
+function getZoneVisual(zone: InventoryZone, index: number) {
+  const visual =
+    defaultZoneVisuals.find((entry) => entry.id === zone.id) ??
+    defaultZoneVisuals[index % defaultZoneVisuals.length];
+
+  return {
+    ...visual,
+    badge: getZoneBadge(zone.name),
+  };
+}
+
+function getZoneBadge(name: string): string {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = words
+    .map((word) => word.match(/[a-z0-9]/i)?.[0] ?? "")
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return initials || "Z";
+}
 
 function createEmptyForm(zoneId: InventoryZoneId): ItemFormState {
   const prefix = zoneId
@@ -128,10 +164,10 @@ function createEmptyForm(zoneId: InventoryZoneId): ItemFormState {
     name: "",
     zoneId,
     typeId: "equipment",
-    conditionId: "good",
-    status: "available",
+    conditionId: "baik",
     quantity: "1",
-    minimumQuantity: "1",
+    acquisitionDate: new Date().toISOString().slice(0, 10),
+    sourceId: "bop-paud",
     location: "",
     notes: "",
   };
@@ -165,7 +201,6 @@ function validateFormInput(
   const name = form.name.trim();
   const location = form.location.trim();
   const quantity = Number.parseInt(form.quantity, 10);
-  const minimumQuantity = Number.parseInt(form.minimumQuantity, 10);
   const duplicateAsset = items.some(
     (item) =>
       item.isActive &&
@@ -201,11 +236,63 @@ function validateFormInput(
     return "Jumlah barang harus angka 0 atau lebih.";
   }
 
-  if (!Number.isInteger(minimumQuantity) || minimumQuantity < 0) {
-    return "Jumlah minimal harus angka 0 atau lebih.";
+  if (!form.acquisitionDate || Number.isNaN(Date.parse(form.acquisitionDate))) {
+    return "Tanggal perolehan wajib diisi.";
+  }
+
+  if (!ITEM_SOURCES.some((source) => source.id === form.sourceId)) {
+    return "Asal barang wajib dipilih.";
   }
 
   return "";
+}
+
+function validateZoneForm(form: ZoneFormState): string {
+  const name = form.name.trim();
+  const description = form.description.trim();
+
+  if (!name) {
+    return "Nama zona wajib diisi.";
+  }
+
+  if (name.length > 80) {
+    return "Nama zona maksimal 80 karakter.";
+  }
+
+  if (description.length > 240) {
+    return "Deskripsi zona maksimal 240 karakter.";
+  }
+
+  return "";
+}
+
+function formatConditionNote(note: string): string {
+  return note
+    .replace(/\bgood\b/gi, conditionLabels.baik)
+    .replace(/\bneeds-repair\b/gi, conditionLabels["perlu-perbaikan"])
+    .replace(/\bdamaged\b/gi, conditionLabels["rusak-berat"])
+    .replace(/\bmissing\b/gi, conditionLabels["tidak-layak-pakai"]);
+}
+
+function createLocalZoneId(name: string, zones: InventoryZone[]): string {
+  const baseId =
+    name
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || `zona-${Date.now()}`;
+  const usedIds = new Set(zones.map((zone) => zone.id));
+  let candidate = baseId;
+  let suffix = 2;
+
+  while (usedIds.has(candidate)) {
+    candidate = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
 }
 
 export default function Home() {
@@ -213,6 +300,7 @@ export default function Home() {
   const [selectedZoneId, setSelectedZoneId] = useState<InventoryZoneId | null>(
     null,
   );
+  const [zones, setZones] = useState<InventoryZone[]>(INVENTORY_ZONES);
   const [items, setItems] = useState<InventoryItem[]>(INVENTORY_ITEMS);
   const [conditionLogs, setConditionLogs] =
     useState<ConditionLog[]>(CONDITION_LOGS);
@@ -221,11 +309,25 @@ export default function Home() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [photoStatus, setPhotoStatus] = useState("");
   const [formStatus, setFormStatus] = useState("");
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
+  const [zoneDeleteTarget, setZoneDeleteTarget] = useState<InventoryZone | null>(
+    null,
+  );
+  const [zoneDialogMode, setZoneDialogMode] = useState<"create" | "edit" | null>(
+    null,
+  );
+  const [zoneForm, setZoneForm] = useState<ZoneFormState>({
+    name: "",
+    description: "",
+  });
+  const [zoneFormStatus, setZoneFormStatus] = useState("");
   const [dataSource, setDataSource] = useState<"seed" | "supabase">("seed");
   const [syncStatus, setSyncStatus] = useState(
     "Memuat data contoh sambil menunggu Supabase.",
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [isZoneSaving, setIsZoneSaving] = useState(false);
   const [form, setForm] = useState<ItemFormState>(
     createEmptyForm("mini-garden"),
   );
@@ -248,6 +350,10 @@ export default function Home() {
           payload.conditionLogs.length > 0
         ) {
           setConditionLogs(payload.conditionLogs);
+        }
+
+        if (payload.zones.length > 0) {
+          setZones(payload.zones);
         }
 
         setDataSource(payload.source);
@@ -275,17 +381,24 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setToast(null), 3200);
+
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
   const activeItems = useMemo(
     () => items.filter((item) => item.isActive),
     [items],
   );
-  const selectedZone = selectedZoneId ? getZoneById(selectedZoneId) : null;
+  const selectedZone = selectedZoneId
+    ? zones.find((zone) => zone.id === selectedZoneId) ?? null
+    : null;
   const stats = getDashboardStats(activeItems);
-  const summary = summarizeInventory(activeItems);
-  const attentionItems = sortItemsByAttention(
-    getItemsNeedingAttention(activeItems),
-  ).slice(0, 5);
-  const lowStockItems = getLowStockItems(activeItems);
 
   const zoneItems = useMemo(() => {
     if (!selectedZoneId) {
@@ -317,7 +430,7 @@ export default function Home() {
   }
 
   function openAddForm() {
-    const zoneId = selectedZoneId ?? "mini-garden";
+    const zoneId = selectedZoneId ?? zones[0]?.id ?? "mini-garden";
     setForm({
       ...createEmptyForm(zoneId),
       assetTag: createSuggestedAssetTag(zoneId, activeItems),
@@ -332,6 +445,10 @@ export default function Home() {
     window.open(path, "_blank", "noopener,noreferrer");
   }
 
+  function showToast(message: string, tone: ToastState["tone"] = "success") {
+    setToast({ id: Date.now(), message, tone });
+  }
+
   async function refreshInventoryFromApi(successMessage: string) {
     const payload = await fetchInventory();
 
@@ -341,6 +458,10 @@ export default function Home() {
 
     if (payload.source === "supabase" || payload.conditionLogs.length > 0) {
       setConditionLogs(payload.conditionLogs);
+    }
+
+    if (payload.zones.length > 0) {
+      setZones(payload.zones);
     }
 
     setDataSource(payload.source);
@@ -355,9 +476,9 @@ export default function Home() {
       zoneId: item.zoneId,
       typeId: item.typeId,
       conditionId: item.conditionId,
-      status: item.status,
       quantity: String(item.quantity),
-      minimumQuantity: String(item.minimumQuantity),
+      acquisitionDate: item.acquisitionDate,
+      sourceId: item.sourceId,
       location: item.location,
       notes: item.notes ?? "",
       photoUrl: item.photoUrl,
@@ -373,10 +494,6 @@ export default function Home() {
 
     const now = new Date().toISOString().slice(0, 10);
     const quantity = Math.max(0, Number.parseInt(form.quantity, 10) || 0);
-    const minimumQuantity = Math.max(
-      0,
-      Number.parseInt(form.minimumQuantity, 10) || 0,
-    );
     const validationMessage = validateFormInput(form, items);
 
     if (validationMessage) {
@@ -392,9 +509,11 @@ export default function Home() {
       zoneId: form.zoneId,
       typeId: form.typeId,
       conditionId: form.conditionId,
-      status: form.status,
+      status: "available",
       quantity,
-      minimumQuantity,
+      minimumQuantity: 0,
+      acquisitionDate: form.acquisitionDate,
+      sourceId: form.sourceId,
       location: form.location.trim(),
       owner: "PAUD Makerspace",
       lastCheckedAt: now,
@@ -413,6 +532,7 @@ export default function Home() {
         setSelectedZoneId(savedItem.zoneId);
         setIsFormOpen(false);
         setFormStatus("");
+        showToast(form.id ? "Barang berhasil diperbarui." : "Barang berhasil ditambahkan.");
         return;
       } catch (error) {
         setSyncStatus(
@@ -425,6 +545,7 @@ export default function Home() {
             ? error.message
             : "Gagal menyimpan barang. Coba ulangi.",
         );
+        showToast("Gagal menyimpan barang. Coba ulangi.", "error");
       } finally {
         setIsSaving(false);
       }
@@ -445,9 +566,11 @@ export default function Home() {
           zoneId: form.zoneId,
           typeId: form.typeId,
           conditionId: form.conditionId,
-          status: form.status,
+          status: "available",
           quantity,
-          minimumQuantity,
+          minimumQuantity: 0,
+          acquisitionDate: form.acquisitionDate,
+          sourceId: form.sourceId,
           location: form.location.trim(),
           owner: "PAUD Makerspace",
           lastCheckedAt: now,
@@ -494,9 +617,11 @@ export default function Home() {
               zoneId: form.zoneId,
               typeId: form.typeId,
               conditionId: form.conditionId,
-              status: form.status,
+              status: "available",
               quantity,
-              minimumQuantity,
+              minimumQuantity: 0,
+              acquisitionDate: form.acquisitionDate,
+              sourceId: form.sourceId,
               location: form.location.trim(),
               notes: form.notes.trim() || undefined,
               photoUrl: form.photoUrl,
@@ -511,18 +636,25 @@ export default function Home() {
     setIsSaving(false);
     setFormStatus("");
     setSyncStatus("Perubahan tersimpan sementara di browser.");
+    showToast(form.id ? "Barang berhasil diperbarui." : "Barang berhasil ditambahkan.");
   }
 
-  async function softDeleteItem(itemId: string) {
-    const confirmed = window.confirm(
-      "Hapus barang ini dari daftar aktif? Riwayat kondisinya tetap disimpan.",
-    );
+  function requestDeleteItem(itemId: string) {
+    const item = items.find((entry) => entry.id === itemId);
 
-    if (!confirmed) {
+    if (item) {
+      setDeleteTarget(item);
+    }
+  }
+
+  async function confirmDeleteItem() {
+    if (!deleteTarget) {
       return;
     }
 
+    const itemId = deleteTarget.id;
     const previousItems = items;
+    setDeleteTarget(null);
     setItems((currentItems) =>
       currentItems.map((item) =>
         item.id === itemId ? { ...item, isActive: false } : item,
@@ -531,12 +663,14 @@ export default function Home() {
 
     if (dataSource !== "supabase") {
       setSyncStatus("Barang dihapus sementara dari data contoh.");
+      showToast("Barang dihapus dari daftar aktif.");
       return;
     }
 
     try {
       await softDeleteInventoryItem(itemId);
       await refreshInventoryFromApi("Barang berhasil dihapus dari daftar aktif.");
+      showToast("Barang berhasil dihapus dari daftar aktif.");
     } catch (error) {
       setItems(previousItems);
       setSyncStatus(
@@ -544,7 +678,153 @@ export default function Home() {
           ? `Gagal menghapus barang: ${error.message}`
           : "Gagal menghapus barang.",
       );
+      showToast("Gagal menghapus barang. Coba ulangi.", "error");
     }
+  }
+
+  function openAddZoneDialog() {
+    setZoneForm({ name: "", description: "" });
+    setZoneFormStatus("");
+    setZoneDialogMode("create");
+  }
+
+  function openEditZoneDialog(zone: InventoryZone) {
+    setZoneForm({
+      id: zone.id,
+      name: zone.name,
+      description: zone.description,
+    });
+    setZoneFormStatus("");
+    setZoneDialogMode("edit");
+  }
+
+  async function handleZoneSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsZoneSaving(true);
+
+    const name = zoneForm.name.trim();
+    const description = zoneForm.description.trim();
+    const validationMessage = validateZoneForm(zoneForm);
+
+    if (validationMessage) {
+      setZoneFormStatus(validationMessage);
+      setIsZoneSaving(false);
+      return;
+    }
+
+    const zoneInput: SaveInventoryZoneInput = {
+      name,
+      description: description || undefined,
+    };
+
+    if (dataSource === "supabase") {
+      try {
+        const savedZone =
+          zoneDialogMode === "edit" && zoneForm.id
+            ? await updateInventoryZone(zoneForm.id, zoneInput)
+            : await createInventoryZone(zoneInput);
+
+        await refreshInventoryFromApi("Data zona tersimpan ke Supabase.");
+        setZoneDialogMode(null);
+        setZoneFormStatus("");
+        showToast(
+          zoneDialogMode === "edit"
+            ? "Zona berhasil diperbarui."
+            : "Zona berhasil ditambahkan.",
+        );
+
+        if (zoneDialogMode !== "edit") {
+          setSelectedZoneId(savedZone.id);
+          setActiveTab("zones");
+        }
+      } catch (error) {
+        setZoneFormStatus(
+          error instanceof Error
+            ? error.message
+            : "Zona belum bisa disimpan. Coba ulangi.",
+        );
+        showToast("Zona belum bisa disimpan. Coba ulangi.", "error");
+      } finally {
+        setIsZoneSaving(false);
+      }
+
+      return;
+    }
+
+    if (zoneDialogMode === "edit" && zoneForm.id) {
+      setZones((currentZones) =>
+        currentZones.map((zone) =>
+          zone.id === zoneForm.id ? { ...zone, name, description } : zone,
+        ),
+      );
+      setSyncStatus("Perubahan zona tersimpan sementara di browser.");
+      showToast("Zona berhasil diperbarui.");
+    } else {
+      const newZone: InventoryZone = {
+        id: createLocalZoneId(name, zones),
+        name,
+        description,
+      };
+      setZones((currentZones) => [...currentZones, newZone]);
+      setSelectedZoneId(newZone.id);
+      setActiveTab("zones");
+      setSyncStatus("Zona baru tersimpan sementara di browser.");
+      showToast("Zona berhasil ditambahkan.");
+    }
+
+    setZoneDialogMode(null);
+    setZoneFormStatus("");
+    setIsZoneSaving(false);
+  }
+
+  async function confirmDeleteZone() {
+    if (!zoneDeleteTarget) {
+      return;
+    }
+
+    const zone = zoneDeleteTarget;
+    const hasItems = items.some((item) => item.zoneId === zone.id);
+
+    if (hasItems) {
+      setZoneDeleteTarget(null);
+      showToast(
+        "Zona masih memiliki barang. Pindahkan atau hapus barangnya dulu.",
+        "error",
+      );
+      return;
+    }
+
+    if (dataSource === "supabase") {
+      try {
+        await deleteInventoryZone(zone.id);
+        await refreshInventoryFromApi("Zona berhasil dihapus dari Supabase.");
+        if (selectedZoneId === zone.id) {
+          setSelectedZoneId(null);
+        }
+        setZoneDeleteTarget(null);
+        showToast("Zona berhasil dihapus.");
+      } catch (error) {
+        setZoneDeleteTarget(null);
+        showToast(
+          error instanceof Error
+            ? error.message
+            : "Zona belum bisa dihapus. Coba ulangi.",
+          "error",
+        );
+      }
+
+      return;
+    }
+
+    setZones((currentZones) =>
+      currentZones.filter((currentZone) => currentZone.id !== zone.id),
+    );
+    if (selectedZoneId === zone.id) {
+      setSelectedZoneId(null);
+    }
+    setZoneDeleteTarget(null);
+    setSyncStatus("Zona dihapus sementara dari data contoh.");
+    showToast("Zona berhasil dihapus.");
   }
 
   async function handlePhotoChange(file?: File) {
@@ -588,45 +868,22 @@ export default function Home() {
 
   return (
     <main className="min-h-dvh bg-[var(--background)] pb-28 text-slate-900">
-      <header className="sticky top-0 z-20 border-b border-blue-100 bg-white/90 shadow-sm backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <header className="sticky top-0 z-20 border-b border-[#ddebdc] bg-white/90 shadow-sm backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-600 text-base font-black text-white shadow-[0_6px_0_#1d4ed8]">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#2f7d68] text-base font-black text-white">
                 IP
               </div>
               <div>
-                <p className="text-xs font-black uppercase tracking-normal text-blue-700">
+                <p className="text-xs font-black uppercase tracking-normal text-[#2f7d68]">
                   Inventaris PAUD
                 </p>
-                <h1 className="mt-0.5 text-2xl font-black text-slate-950 sm:text-3xl">
-                  Logbook Makerspace
+                <h1 className="mt-0.5 text-xl font-black text-slate-950 sm:text-2xl">
+                  Catatan Makerspace
                 </h1>
               </div>
             </div>
-            <button
-              onClick={() => openReport()}
-              title={`${activeItems.length} barang aktif siap dicetak`}
-              className="min-h-12 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_5px_0_#b45309] transition hover:-translate-y-0.5 hover:bg-amber-400 active:translate-y-0"
-            >
-              Cetak / PDF
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-blue-50 p-1.5 ring-1 ring-blue-100 sm:max-w-lg">
-            <TabButton
-              active={activeTab === "dashboard"}
-              label="Dashboard"
-              onClick={() => {
-                setActiveTab("dashboard");
-                setSelectedZoneId(null);
-              }}
-            />
-            <TabButton
-              active={activeTab === "zones"}
-              label="Zona Makerspace"
-              onClick={() => setActiveTab("zones")}
-            />
           </div>
         </div>
       </header>
@@ -634,15 +891,14 @@ export default function Home() {
       {activeTab === "dashboard" ? (
         <DashboardView
           activeItems={activeItems}
-          attentionItems={attentionItems}
-          lowStockItems={lowStockItems}
           stats={stats}
-          summary={summary}
           syncStatus={syncStatus}
+          zones={zones}
           onOpenZone={openZone}
         />
       ) : (
         <ZonesView
+          zones={zones}
           conditionFilter={conditionFilter}
           conditionLogs={conditionLogs}
           isFormOpen={isFormOpen}
@@ -652,8 +908,16 @@ export default function Home() {
             setIsFormOpen(false);
             setFormStatus("");
           }}
-          onDeleteItem={softDeleteItem}
+          onCancelForm={() => {
+            setIsFormOpen(false);
+            setFormStatus("");
+            setPhotoStatus("");
+          }}
+          onDeleteItem={requestDeleteItem}
+          onDeleteZone={setZoneDeleteTarget}
           onEditItem={openEditForm}
+          onEditZone={openEditZoneDialog}
+          onAddZone={openAddZoneDialog}
           onOpenZone={openZone}
           onPrintZone={openReport}
           onPhotoChange={handlePhotoChange}
@@ -673,10 +937,10 @@ export default function Home() {
         />
       )}
 
-      <nav className="fixed inset-x-4 bottom-4 z-30 mx-auto grid max-w-md grid-cols-2 gap-2 rounded-3xl bg-white/95 p-2 shadow-2xl ring-1 ring-blue-100 backdrop-blur sm:hidden">
+      <nav className="fixed inset-x-4 bottom-4 z-30 mx-auto grid max-w-md grid-cols-2 gap-2 rounded-3xl border border-[#d9eadf] bg-white/95 p-2 shadow-2xl backdrop-blur">
         <TabButton
           active={activeTab === "dashboard"}
-          label="Dashboard"
+          label="Dasbor"
           onClick={() => {
             setActiveTab("dashboard");
             setSelectedZoneId(null);
@@ -688,139 +952,399 @@ export default function Home() {
           onClick={() => setActiveTab("zones")}
         />
       </nav>
+
+      {toast ? (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          onClose={() => setToast(null)}
+          tone={toast.tone}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <DeleteConfirmDialog
+          item={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDeleteItem}
+        />
+      ) : null}
+
+      {zoneDialogMode ? (
+        <ZoneFormDialog
+          form={zoneForm}
+          isSaving={isZoneSaving}
+          mode={zoneDialogMode}
+          onCancel={() => {
+            setZoneDialogMode(null);
+            setZoneFormStatus("");
+          }}
+          onChange={setZoneForm}
+          onSubmit={handleZoneSubmit}
+          status={zoneFormStatus}
+        />
+      ) : null}
+
+      {zoneDeleteTarget ? (
+        <ZoneDeleteDialog
+          zone={zoneDeleteTarget}
+          onCancel={() => setZoneDeleteTarget(null)}
+          onConfirm={confirmDeleteZone}
+        />
+      ) : null}
     </main>
   );
 }
 
 function DashboardView({
   activeItems,
-  attentionItems,
-  lowStockItems,
   stats,
-  summary,
   syncStatus,
+  zones,
   onOpenZone,
 }: {
   activeItems: InventoryItem[];
-  attentionItems: InventoryItem[];
-  lowStockItems: InventoryItem[];
   stats: ReturnType<typeof getDashboardStats>;
-  summary: ReturnType<typeof summarizeInventory>;
   syncStatus: string;
+  zones: InventoryZone[];
   onOpenZone: (zoneId: InventoryZoneId) => void;
 }) {
   return (
-    <section className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_360px] lg:px-8">
-      <div className="space-y-6">
-        <div className="overflow-hidden rounded-[1.75rem] border border-blue-100 bg-white p-6 shadow-[var(--shadow-card)]">
-          <p className="inline-flex rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700">
-            Ringkasan Hari Ini
-          </p>
-          <h2 className="mt-4 max-w-2xl text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
-            Pantau kondisi sarana makerspace dalam satu tampilan.
-          </h2>
-          <p className="mt-3 max-w-2xl text-base font-medium leading-7 text-slate-600">
-            Gunakan dashboard untuk melihat barang yang perlu perhatian sebelum
-            membuka detail di setiap zona.
-          </p>
-          <p className="mt-4 inline-flex rounded-full bg-amber-50 px-4 py-2 text-sm font-black text-amber-800">
+    <section className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="inline-flex rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68]">
+              Ringkasan Hari Ini
+            </p>
+            <h2 className="mt-4 max-w-3xl text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
+              Pantau inventaris makerspace dengan ringkas.
+            </h2>
+            <p className="mt-3 max-w-2xl text-base font-semibold leading-7 text-slate-600">
+              Buka zona untuk memperbarui kondisi barang, foto, dan riwayat
+              pengecekan.
+            </p>
+          </div>
+          <p className="inline-flex w-fit rounded-full bg-[#fff6df] px-4 py-2 text-sm font-black text-[#8a5a13]">
             {syncStatus}
           </p>
         </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Total Barang" tone="blue" value={stats.totalAssets} />
-          <MetricCard label="Total Unit" tone="pink" value={stats.totalUnits} />
-          <MetricCard label="Tersedia" tone="green" value={`${stats.availableRate}%`} />
-          <MetricCard label="Perlu Cek" tone="amber" value={stats.repairQueueCount + stats.missingCount} />
-        </div>
-
-        <section className="rounded-[1.75rem] border border-blue-100 bg-white p-5 shadow-[var(--shadow-card)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-slate-950">
-                Progres per Zona
-              </h2>
-              <p className="text-sm font-medium text-slate-500">
-                Klik zona untuk membuka kartu dan tabel inventaris.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            {summary.byZone.map((zoneCount) => {
-              const zone = getZoneById(zoneCount.id as InventoryZoneId);
-              const zoneItems = activeItems.filter(
-                (item) => item.zoneId === zone.id,
-              );
-              const attentionCount = getItemsNeedingAttention(zoneItems).length;
-              const checkedCount = zoneItems.filter(
-                (item) => Date.parse(item.lastCheckedAt) >= Date.parse("2026-05-15"),
-              ).length;
-              const percent =
-                zoneItems.length === 0
-                  ? 0
-                  : Math.round((checkedCount / zoneItems.length) * 100);
-
-              return (
-                <button
-                  key={zone.id}
-                  onClick={() => onOpenZone(zone.id)}
-                  className="min-h-32 rounded-2xl border border-blue-100 bg-blue-50/50 p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:translate-y-0"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-black text-slate-950">{zone.name}</p>
-                      <p className="text-sm font-medium text-slate-500">
-                        {zoneCount.count} barang, {attentionCount} perhatian
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-blue-700 ring-1 ring-blue-100">
-                      {percent}%
-                    </span>
-                  </div>
-                  <div className="mt-4 h-3 rounded-full bg-white ring-1 ring-blue-100">
-                    <div
-                      className="h-3 rounded-full bg-blue-600"
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
       </div>
 
-      <aside className="space-y-4">
-        <InfoPanel title="Butuh Perhatian">
-          <div className="space-y-3">
-            {attentionItems.map((item) => (
-              <ItemAlert key={item.id} item={item} />
-            ))}
-          </div>
-        </InfoPanel>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Total Barang" tone="green" value={stats.totalAssets} />
+        <MetricCard label="Total Unit" tone="yellow" value={stats.totalUnits} />
+        <MetricCard label="Tersedia" tone="mint" value={`${stats.availableRate}%`} />
+        <MetricCard label="Perlu Cek" tone="rose" value={stats.repairQueueCount + stats.missingCount} />
+      </div>
 
-        <InfoPanel title="Stok Menipis">
-          {lowStockItems.length > 0 ? (
-            <ul className="space-y-2 text-sm font-bold text-slate-700">
-              {lowStockItems.map((item) => (
-                <li key={item.id} className="flex justify-between gap-3">
-                  <span>{item.name}</span>
-                  <span className="text-amber-700">
-                    {item.quantity}/{item.minimumQuantity}
+      <section className="rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
+        <div className="mb-4">
+          <h2 className="text-xl font-black text-slate-950">
+            Progres per Zona
+          </h2>
+          <p className="text-sm font-semibold text-slate-500">
+            Pilih zona untuk melihat tabel dan mengelola barang.
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {zones.map((zone) => {
+            const zoneItems = activeItems.filter(
+              (item) => item.zoneId === zone.id,
+            );
+            const attentionCount = getItemsNeedingAttention(zoneItems).length;
+            const checkedCount = zoneItems.filter(
+              (item) => Date.parse(item.lastCheckedAt) >= Date.parse("2026-05-15"),
+            ).length;
+            const percent =
+              zoneItems.length === 0
+                ? 0
+                : Math.round((checkedCount / zoneItems.length) * 100);
+
+            return (
+              <button
+                key={zone.id}
+                onClick={() => onOpenZone(zone.id)}
+                className="rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:translate-y-0"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black text-slate-950">{zone.name}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      {zoneItems.length} barang
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-[#2f7d68] ring-1 ring-[#dbe9de]">
+                    {percent}%
                   </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm font-medium text-slate-500">
-              Semua stok aman.
-            </p>
-          )}
-        </InfoPanel>
-      </aside>
+                </div>
+                <div className="mt-4 h-2 rounded-full bg-white ring-1 ring-[#dbe9de]">
+                  <div
+                    className="h-2 rounded-full bg-[#2f7d68]"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-xs font-bold text-slate-500">
+                  {attentionCount} perlu perhatian
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </section>
+  );
+}
+
+function Toast({
+  message,
+  onClose,
+  tone,
+}: {
+  message: string;
+  onClose: () => void;
+  tone: ToastState["tone"];
+}) {
+  const className =
+    tone === "success"
+      ? "border-[#dbe9de] bg-white text-[#1f5f50]"
+      : "border-red-100 bg-white text-red-700";
+
+  return (
+    <div
+      className={`fixed right-4 top-24 z-40 flex max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 shadow-xl ${className}`}
+      role="status"
+    >
+      <p className="text-sm font-black">{message}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="ml-auto rounded-full px-2 text-sm font-black text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+        aria-label="Tutup notifikasi"
+      >
+        Tutup
+      </button>
+    </div>
+  );
+}
+
+function DeleteConfirmDialog({
+  item,
+  onCancel,
+  onConfirm,
+}: {
+  item: InventoryItem;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+    >
+      <div className="w-full max-w-md rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-2xl">
+        <h2 id="delete-dialog-title" className="text-xl font-black text-slate-950">
+          Hapus barang?
+        </h2>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">
+          Barang <span className="font-black text-slate-950">{item.name}</span>{" "}
+          akan dihapus dari daftar aktif. Riwayat kondisi tetap disimpan.
+        </p>
+        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 rounded-full bg-slate-50 px-5 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="min-h-11 rounded-full bg-red-600 px-5 py-2.5 text-sm font-black text-white"
+          >
+            Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ZoneFormDialog({
+  form,
+  isSaving,
+  mode,
+  onCancel,
+  onChange,
+  onSubmit,
+  status,
+}: {
+  form: ZoneFormState;
+  isSaving: boolean;
+  mode: "create" | "edit";
+  onCancel: () => void;
+  onChange: React.Dispatch<React.SetStateAction<ZoneFormState>>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  status: string;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="zone-dialog-title"
+    >
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-lg rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-2xl"
+      >
+        <h2 id="zone-dialog-title" className="text-xl font-black text-slate-950">
+          {mode === "edit" ? "Edit Zona" : "Tambah Zona"}
+        </h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+          Nama zona akan tampil di kartu dan pilihan form barang.
+        </p>
+        {status ? (
+          <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            {status}
+          </p>
+        ) : null}
+        <div className="mt-4 space-y-3">
+          <FormInput
+            label="Nama Zona"
+            value={form.name}
+            onChange={(value) =>
+              onChange((current) => ({ ...current, name: value }))
+            }
+          />
+          <label className="block">
+            <span className="text-xs font-black uppercase text-slate-400">
+              Deskripsi
+            </span>
+            <textarea
+              value={form.description}
+              onChange={(event) =>
+                onChange((current) => ({
+                  ...current,
+                  description: event.target.value,
+                }))
+              }
+              className="mt-1 min-h-24 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 py-3 text-sm font-medium outline-none focus:border-[#2f7d68]"
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 rounded-full bg-slate-50 px-5 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200"
+          >
+            Batal
+          </button>
+          <button
+            disabled={isSaving}
+            className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white disabled:opacity-60"
+          >
+            {isSaving
+              ? "Menyimpan..."
+              : mode === "edit"
+                ? "Simpan Zona"
+                : "Tambah Zona"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ZoneDeleteDialog({
+  onCancel,
+  onConfirm,
+  zone,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  zone: InventoryZone;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="zone-delete-dialog-title"
+    >
+      <div className="w-full max-w-md rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-2xl">
+        <h2
+          id="zone-delete-dialog-title"
+          className="text-xl font-black text-slate-950"
+        >
+          Hapus zona?
+        </h2>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">
+          Zona <span className="font-black text-slate-950">{zone.name}</span>{" "}
+          akan dihapus. Zona yang masih memiliki barang tidak bisa dihapus.
+        </p>
+        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 rounded-full bg-slate-50 px-5 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="min-h-11 rounded-full bg-red-600 px-5 py-2.5 text-sm font-black text-white"
+          >
+            Hapus Zona
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.4"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.4"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6 18 20H6L5 6" />
+      <path d="M10 11v5" />
+      <path d="M14 11v5" />
+    </svg>
   );
 }
 
@@ -833,9 +1357,13 @@ function ZonesView({
   isFormOpen,
   isSaving,
   onAddItem,
+  onAddZone,
   onBack,
+  onCancelForm,
   onDeleteItem,
+  onDeleteZone,
   onEditItem,
+  onEditZone,
   onOpenZone,
   onPrintZone,
   onPhotoChange,
@@ -848,6 +1376,7 @@ function ZonesView({
   setForm,
   syncStatus,
   zoneItems,
+  zones,
 }: {
   activeItems: InventoryItem[];
   conditionFilter: string;
@@ -857,9 +1386,13 @@ function ZonesView({
   isFormOpen: boolean;
   isSaving: boolean;
   onAddItem: () => void;
+  onAddZone: () => void;
   onBack: () => void;
+  onCancelForm: () => void;
   onDeleteItem: (itemId: string) => void;
+  onDeleteZone: (zone: InventoryZone) => void;
   onEditItem: (item: InventoryItem) => void;
+  onEditZone: (zone: InventoryZone) => void;
   onOpenZone: (zoneId: InventoryZoneId) => void;
   onPrintZone: (zoneId?: InventoryZoneId) => void;
   onPhotoChange: (file?: File) => void;
@@ -868,65 +1401,94 @@ function ZonesView({
   onUpdateConditionFilter: (value: string) => void;
   photoStatus: string;
   query: string;
-  selectedZone: (typeof INVENTORY_ZONES)[number] | null;
+  selectedZone: InventoryZone | null;
   setForm: React.Dispatch<React.SetStateAction<ItemFormState>>;
   syncStatus: string;
   zoneItems: InventoryItem[];
+  zones: InventoryZone[];
 }) {
   if (!selectedZone) {
     return (
-      <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-5">
-          <p className="inline-flex rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700 ring-1 ring-blue-100">
-            Zona Makerspace
-          </p>
-          <h2 className="mt-3 text-3xl font-black text-slate-950">
-            Pilih zona yang akan dicek.
-          </h2>
+      <section className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="inline-flex rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] ring-1 ring-[#dbe9de]">
+              Zona Makerspace
+            </p>
+            <h2 className="mt-3 text-3xl font-black text-slate-950">
+              Pilih zona yang akan dicek.
+            </h2>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={onAddZone}
+              className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
+            >
+              Tambah Zona
+            </button>
+            <button
+              onClick={() => onPrintZone()}
+              className="min-h-11 rounded-full border border-[#d9eadf] bg-white px-5 py-2.5 text-sm font-black text-[#2f7d68] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+            >
+              Cetak PDF Semua Zona
+            </button>
+          </div>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-          {INVENTORY_ZONES.map((zone) => {
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {zones.map((zone, index) => {
             const zoneItems = activeItems.filter((item) => item.zoneId === zone.id);
             const attentionCount = getItemsNeedingAttention(zoneItems).length;
-            const visual = zoneVisuals[zone.id];
+            const visual = getZoneVisual(zone, index);
 
             return (
-              <button
+              <article
                 key={zone.id}
-                onClick={() => onOpenZone(zone.id)}
-                className={`min-h-[23rem] overflow-hidden rounded-[1.75rem] bg-gradient-to-br ${visual.theme} p-5 text-left shadow-[var(--shadow-card)] ring-1 ring-blue-100 transition hover:-translate-y-1 hover:shadow-xl active:translate-y-0`}
+                className={`relative flex min-h-[17rem] flex-col rounded-3xl border border-[#dbe9de] ${visual.theme} p-5 text-left shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-lg`}
               >
-                <div className="flex justify-between gap-3">
-                  <span className="rounded-full bg-white/85 px-3 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100">
-                    {visual.accent}
-                  </span>
-                  <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700 ring-1 ring-pink-100">
-                    Kelola
-                  </span>
+                <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => onEditZone(zone)}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-white/85 text-[#2f7d68] shadow-sm ring-1 ring-[#dbe9de] transition hover:bg-white"
+                    aria-label={`Edit zona ${zone.name}`}
+                  >
+                    <PencilIcon />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteZone(zone)}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-white/85 text-red-600 shadow-sm ring-1 ring-red-100 transition hover:bg-white"
+                    aria-label={`Hapus zona ${zone.name}`}
+                  >
+                    <TrashIcon />
+                  </button>
                 </div>
-
-                <div className="mt-8 flex justify-center">
+                <div className="flex justify-center">
                   <div
-                    className={`grid h-24 w-24 place-items-center rounded-3xl ${visual.iconBg} text-3xl font-black shadow-sm ring-1 ring-white/70`}
+                    className={`grid h-20 w-20 place-items-center rounded-3xl ${visual.iconBg} text-2xl font-black shadow-sm ring-1 ring-white/70`}
                   >
                     {visual.badge}
                   </div>
                 </div>
 
-                <div className="mt-7 text-center">
+                <div className="mt-5 flex-1 text-center">
                   <h3 className="text-xl font-black text-slate-950">
                     {zone.name}
                   </h3>
-                  <p className="mt-2 text-sm font-bold text-slate-500">
+                  <p className="mt-2 text-sm font-semibold text-slate-500">
                     {zoneItems.length} barang / {attentionCount} perlu cek
                   </p>
                 </div>
 
-                <div className="mt-6 rounded-2xl bg-amber-500 px-4 py-4 text-center text-base font-black text-slate-950 shadow-[0_5px_0_#b45309]">
+                <button
+                  type="button"
+                  onClick={() => onOpenZone(zone.id)}
+                  className="mt-5 min-h-11 rounded-full bg-white px-4 py-3 text-center text-sm font-black text-[#2f7d68] shadow-sm ring-1 ring-[#dbe9de] transition hover:bg-[#f7fbf6]"
+                >
                   Buka Zona
-                </div>
-              </button>
+                </button>
+              </article>
             );
           })}
         </div>
@@ -944,18 +1506,20 @@ function ZonesView({
       Boolean(entry),
     )
     .slice(0, 6);
+  const allZoneItems = activeItems.filter((item) => item.zoneId === selectedZone.id);
+  const zoneAttentionCount = getItemsNeedingAttention(allZoneItems).length;
 
   return (
-    <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <section className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <button
             onClick={onBack}
-            className="mb-3 min-h-11 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 shadow-sm ring-1 ring-blue-100"
+            className="mb-3 min-h-11 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 shadow-sm ring-1 ring-[#dbe9de]"
           >
             Kembali ke Zona
           </button>
-          <p className="text-sm font-black uppercase text-blue-700">
+          <p className="text-sm font-black uppercase text-[#2f7d68]">
             Zona Terpilih
           </p>
           <h2 className="text-3xl font-black text-slate-950">
@@ -966,32 +1530,38 @@ function ZonesView({
         <div className="flex flex-col gap-3 sm:flex-row">
           <button
             onClick={() => onPrintZone(selectedZone.id)}
-            className="min-h-12 rounded-2xl bg-white px-5 py-3 text-sm font-black text-blue-700 shadow-sm ring-1 ring-blue-100 transition hover:-translate-y-0.5 active:translate-y-0"
+            className="min-h-11 rounded-full bg-white px-5 py-2.5 text-sm font-black text-[#2f7d68] shadow-sm ring-1 ring-[#dbe9de] transition hover:-translate-y-0.5 active:translate-y-0"
           >
             Cetak Zona
           </button>
           <button
             onClick={onAddItem}
-            className="min-h-12 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_5px_0_#b45309] transition hover:-translate-y-0.5 hover:bg-amber-400 active:translate-y-0"
+            className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
           >
             Tambah Barang
           </button>
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-[1.75rem] border border-blue-100 bg-white p-4 shadow-[var(--shadow-card)]">
-          <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <MetricCard label="Barang Zona" tone="green" value={allZoneItems.length} />
+        <MetricCard label="Perlu Cek" tone="rose" value={zoneAttentionCount} />
+      </div>
+
+      <div className={isFormOpen ? "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]" : "space-y-5"}>
+        <div className="space-y-5">
+          <section className="rounded-3xl border border-[#dbe9de] bg-white p-4 shadow-[var(--shadow-card)]">
+          <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="Cari nama, kode, atau lokasi"
-              className="h-12 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 text-sm font-bold outline-none focus:border-blue-500"
+              className="h-12 min-w-0 rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-4 text-sm font-semibold outline-none focus:border-[#2f7d68]"
             />
             <select
               value={conditionFilter}
               onChange={(event) => onUpdateConditionFilter(event.target.value)}
-              className="h-12 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 text-sm font-bold outline-none focus:border-blue-500"
+              className="h-12 min-w-0 rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-4 text-sm font-semibold outline-none focus:border-[#2f7d68]"
             >
               <option value="all">Semua kondisi</option>
               {CONDITION_TYPES.map((condition) => (
@@ -1002,84 +1572,70 @@ function ZonesView({
             </select>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+            <table className="w-full min-w-[760px] border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-xs font-black uppercase text-slate-400">
-                  <th className="px-3 py-3">Barang</th>
-                  <th className="px-3 py-3">Jenis</th>
-                  <th className="px-3 py-3">Jumlah</th>
-                  <th className="px-3 py-3">Kondisi</th>
-                  <th className="px-3 py-3">Status</th>
-                  <th className="px-3 py-3">Lokasi</th>
-                  <th className="px-3 py-3">Aksi</th>
+                <tr className="border-b border-slate-100 bg-[#f7fbf6] text-xs font-black uppercase text-slate-500">
+                  <th className="w-[28%] px-4 py-3">Barang</th>
+                  <th className="px-4 py-3">Jenis</th>
+                  <th className="px-4 py-3">Tanggal</th>
+                  <th className="px-4 py-3">Jumlah</th>
+                  <th className="px-4 py-3">Asal</th>
+                  <th className="px-4 py-3">Kondisi</th>
+                  <th className="px-4 py-3">Lokasi</th>
+                  <th className="px-4 py-3">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {zoneItems.map((item) => {
-                  const recentLog = getMostRecentConditionLog(
-                    item.id,
-                    conditionLogs,
-                  );
-
                   return (
-                    <tr key={item.id} className="border-b border-slate-100 transition hover:bg-blue-50/40">
-                      <td className="px-3 py-4">
+                    <tr key={item.id} className="border-b border-slate-100 transition hover:bg-[#f7fbf6]">
+                      <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-xs font-black text-blue-700 ring-1 ring-blue-100">
+                          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#edf7f1] text-xs font-black text-[#2f7d68] ring-1 ring-[#dbe9de]">
                             {item.assetTag.split("-")[0]}
                           </div>
-                          <div>
-                            <p className="font-black text-slate-950">{item.name}</p>
+                          <div className="min-w-0">
+                            <p className="break-words font-black leading-snug text-slate-950">{item.name}</p>
                             <p className="text-xs font-bold text-slate-400">
                               {item.assetTag}
                             </p>
-                            {recentLog ? (
-                              <p className="mt-1 text-xs font-medium text-slate-500">
-                                Log: {recentLog.note}
-                              </p>
-                            ) : null}
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-4 font-bold text-slate-600">
+                      <td className="px-4 py-4 font-semibold text-slate-600">
                         {typeLabels[getItemTypeById(item.typeId).id]}
                       </td>
-                      <td className="px-3 py-4">
+                      <td className="px-4 py-4 font-semibold text-slate-600">
+                        {item.acquisitionDate}
+                      </td>
+                      <td className="px-4 py-4">
                         <span
-                          className={
-                            isLowStock(item)
-                              ? "font-black text-amber-700"
-                              : "font-black text-slate-700"
-                          }
+                          className="font-black text-slate-700"
                         >
                           {item.quantity}
                         </span>
-                        <span className="font-medium text-slate-400">
-                          {" "}
-                          / min {item.minimumQuantity}
-                        </span>
                       </td>
-                      <td className="px-3 py-4">
+                      <td className="px-4 py-4 font-semibold text-slate-600">
+                        {sourceLabels[item.sourceId]}
+                      </td>
+                      <td className="px-4 py-4">
                         <ConditionBadge item={item} />
                       </td>
-                      <td className="px-3 py-4 font-bold text-slate-600">
-                        {statusLabels[item.status]}
-                      </td>
-                      <td className="px-3 py-4 font-medium text-slate-600">
+                      <td className="max-w-[180px] break-words px-4 py-4 font-medium text-slate-600">
                         {item.location}
                       </td>
-                      <td className="px-3 py-4">
-                        <div className="flex gap-2">
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => onEditItem(item)}
-                            className="min-h-11 rounded-xl bg-pink-50 px-3 py-2 text-xs font-black text-pink-700 ring-1 ring-pink-100"
+                            className="min-h-10 rounded-full bg-[#fff2f6] px-4 py-2 text-xs font-black text-[#9d3e67] ring-1 ring-[#f3d6e2]"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => onDeleteItem(item.id)}
-                            className="min-h-11 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200"
+                            className="min-h-10 rounded-full bg-slate-50 px-4 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200"
                           >
                             Hapus
                           </button>
@@ -1104,67 +1660,68 @@ function ZonesView({
           ) : null}
         </section>
 
-        <aside className="space-y-4">
-          {isFormOpen ? (
+          <HistoryPanel zoneHistory={zoneHistory} />
+        </div>
+
+        {isFormOpen ? (
+          <aside>
             <ItemForm
               form={form}
               formStatus={formStatus}
               onChange={setForm}
+              onCancel={onCancelForm}
               onPhotoChange={onPhotoChange}
               onSubmit={onSubmit}
               photoStatus={photoStatus}
               isSaving={isSaving}
+              zones={zones}
             />
-          ) : (
-            <>
-              <InfoPanel title="Ringkasan Zona">
-                <div className="space-y-3 text-sm font-bold text-slate-600">
-                  <p>{zoneItems.length} barang aktif ditampilkan.</p>
-                  <p>
-                    {getItemsNeedingAttention(zoneItems).length} barang perlu
-                    perhatian.
-                  </p>
-                  <p>{getLowStockItems(zoneItems).length} barang stok menipis.</p>
-                </div>
-              </InfoPanel>
-
-              <InfoPanel title="Riwayat Kondisi">
-                {zoneHistory.length > 0 ? (
-                  <div className="space-y-3">
-                    {zoneHistory.map(({ item, log }) => (
-                      <div
-                        key={log.id}
-                        className="rounded-2xl bg-slate-50 p-3 text-sm"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-black text-slate-950">
-                              {item.name}
-                            </p>
-                            <p className="mt-1 font-medium text-slate-500">
-                              {log.note}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100">
-                            {conditionLabels[log.conditionId]}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-xs font-bold text-slate-400">
-                          {log.checkedAt} oleh {log.checkedBy}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm font-medium text-slate-500">
-                    Belum ada riwayat kondisi untuk zona ini.
-                  </p>
-                )}
-              </InfoPanel>
-            </>
-          )}
-        </aside>
+          </aside>
+        ) : null}
       </div>
+    </section>
+  );
+}
+
+function HistoryPanel({
+  zoneHistory,
+}: {
+  zoneHistory: Array<{ item: InventoryItem; log: ConditionLog }>;
+}) {
+  return (
+    <section className="rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
+      <h2 className="text-lg font-black text-slate-950">Riwayat Kondisi</h2>
+      {zoneHistory.length > 0 ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {zoneHistory.map(({ item, log }) => (
+            <div
+              key={log.id}
+              className="rounded-2xl border border-slate-100 bg-[#f7fbf6] p-4 text-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words font-black text-slate-950">
+                    {item.name}
+                  </p>
+                  <p className="mt-1 font-medium leading-6 text-slate-500">
+                    {formatConditionNote(log.note)}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-black text-[#2f7d68] ring-1 ring-[#dbe9de]">
+                  {conditionLabels[log.conditionId]}
+                </span>
+              </div>
+              <p className="mt-3 text-xs font-bold text-slate-400">
+                {log.checkedAt} oleh {log.checkedBy}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm font-medium text-slate-500">
+          Belum ada riwayat kondisi untuk zona ini.
+        </p>
+      )}
     </section>
   );
 }
@@ -1172,28 +1729,41 @@ function ZonesView({
 function ItemForm({
   form,
   formStatus,
+  onCancel,
   onChange,
   onPhotoChange,
   onSubmit,
   photoStatus,
   isSaving,
+  zones,
 }: {
   form: ItemFormState;
   formStatus: string;
+  onCancel: () => void;
   onChange: React.Dispatch<React.SetStateAction<ItemFormState>>;
   onPhotoChange: (file?: File) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   photoStatus: string;
   isSaving: boolean;
+  zones: InventoryZone[];
 }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="rounded-[1.75rem] border border-blue-100 bg-white p-5 shadow-[var(--shadow-card)]"
+      className="rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]"
     >
-      <h3 className="text-xl font-black text-slate-950">
-        {form.id ? "Edit Barang" : "Tambah Barang"}
-      </h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-xl font-black text-slate-950">
+          {form.id ? "Edit Barang" : "Tambah Barang"}
+        </h3>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="min-h-10 rounded-full bg-slate-50 px-4 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200"
+        >
+          Batal
+        </button>
+      </div>
       {formStatus ? (
         <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
           {formStatus}
@@ -1222,9 +1792,9 @@ function ItemForm({
                 zoneId: event.target.value as InventoryZoneId,
               }))
             }
-            className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
+            className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
           >
-            {INVENTORY_ZONES.map((zone) => (
+            {zones.map((zone) => (
               <option key={zone.id} value={zone.id}>
                 {zone.name}
               </option>
@@ -1244,7 +1814,7 @@ function ItemForm({
                   typeId: event.target.value as ItemTypeId,
                 }))
               }
-              className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
+              className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
             >
               {ITEM_TYPES.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -1265,7 +1835,7 @@ function ItemForm({
                   conditionId: event.target.value as ConditionTypeId,
                 }))
               }
-              className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
+              className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
             >
               {CONDITION_TYPES.map((condition) => (
                 <option key={condition.id} value={condition.id}>
@@ -1285,14 +1855,35 @@ function ItemForm({
             }
           />
           <FormInput
-            label="Minimal"
-            type="number"
-            value={form.minimumQuantity}
+            label="Tanggal Perolehan"
+            type="date"
+            value={form.acquisitionDate}
             onChange={(value) =>
-              onChange((current) => ({ ...current, minimumQuantity: value }))
+              onChange((current) => ({ ...current, acquisitionDate: value }))
             }
           />
         </div>
+        <label className="block">
+          <span className="text-xs font-black uppercase text-slate-400">
+            Asal Barang
+          </span>
+          <select
+            value={form.sourceId}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                sourceId: event.target.value as ItemSourceId,
+              }))
+            }
+            className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
+          >
+            {ITEM_SOURCES.map((source) => (
+              <option key={source.id} value={source.id}>
+                {sourceLabels[source.id]}
+              </option>
+            ))}
+          </select>
+        </label>
         <FormInput
           label="Lokasi"
           value={form.location}
@@ -1309,11 +1900,11 @@ function ItemForm({
             onChange={(event) =>
               onChange((current) => ({ ...current, notes: event.target.value }))
             }
-            className="mt-1 min-h-24 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm font-medium outline-none focus:border-blue-500"
+            className="mt-1 min-h-24 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 py-3 text-sm font-medium outline-none focus:border-[#2f7d68]"
           />
         </label>
-        <label className="block rounded-2xl border border-dashed border-blue-200 bg-blue-50 p-3">
-          <span className="text-xs font-black uppercase text-blue-700">
+        <label className="block rounded-2xl border border-dashed border-[#dbe9de] bg-[#f7fbf6] p-3">
+          <span className="text-xs font-black uppercase text-[#2f7d68]">
             Foto Barang WebP
           </span>
           <input
@@ -1323,13 +1914,13 @@ function ItemForm({
             className="mt-2 w-full text-sm font-bold text-slate-600"
           />
           {photoStatus ? (
-            <p className="mt-2 text-xs font-bold text-blue-700">{photoStatus}</p>
+            <p className="mt-2 text-xs font-bold text-[#2f7d68]">{photoStatus}</p>
           ) : null}
         </label>
       </div>
       <button
         disabled={isSaving}
-        className="mt-5 min-h-12 w-full rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_5px_0_#b45309] transition hover:bg-amber-400 active:translate-y-0 disabled:opacity-60"
+        className="mt-5 min-h-12 w-full rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59] active:translate-y-0 disabled:opacity-60"
       >
         {isSaving ? "Menyimpan..." : "Simpan Barang"}
       </button>
@@ -1356,7 +1947,7 @@ function FormInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         inputMode={type === "number" ? "numeric" : undefined}
-        className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-blue-50/60 px-3 text-sm font-bold outline-none focus:border-blue-500"
+        className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
       />
     </label>
   );
@@ -1368,53 +1959,20 @@ function MetricCard({
   value,
 }: {
   label: string;
-  tone: "amber" | "blue" | "green" | "pink";
+  tone: "green" | "mint" | "rose" | "yellow";
   value: string | number;
 }) {
   const tones = {
-    amber: "bg-amber-50 text-amber-800 border-amber-100",
-    blue: "bg-blue-50 text-blue-800 border-blue-100",
-    green: "bg-emerald-50 text-emerald-800 border-emerald-100",
-    pink: "bg-pink-50 text-pink-800 border-pink-100",
+    green: "bg-[#edf7f1] text-[#2f7d68] border-[#dbe9de]",
+    mint: "bg-[#eaf8f0] text-[#2e745a] border-[#d1eadb]",
+    rose: "bg-[#fff0f5] text-[#9d3e67] border-[#f3d6e2]",
+    yellow: "bg-[#fff7df] text-[#8a5a13] border-[#f0dfad]",
   };
 
   return (
-    <div className={`rounded-2xl border p-5 shadow-sm ${tones[tone]}`}>
+    <div className={`rounded-2xl border p-4 shadow-sm ${tones[tone]}`}>
       <p className="text-sm font-black opacity-80">{label}</p>
       <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
-    </div>
-  );
-}
-
-function InfoPanel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[1.75rem] border border-blue-100 bg-white p-5 shadow-[var(--shadow-card)]">
-      <h2 className="mb-4 text-lg font-black text-slate-950">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function ItemAlert({ item }: { item: InventoryItem }) {
-  return (
-    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-black text-slate-950">{item.name}</p>
-          <p className="mt-1 text-xs font-bold text-slate-500">
-            {conditionLabels[item.conditionId]} - {getZoneById(item.zoneId).name}
-          </p>
-        </div>
-        <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100">
-          {item.assetTag}
-        </span>
-      </div>
     </div>
   );
 }
@@ -1433,8 +1991,8 @@ function TabButton({
       onClick={onClick}
       className={`min-h-11 rounded-xl px-4 py-3 text-sm font-black transition ${
         active
-          ? "bg-white text-blue-700 shadow-sm"
-          : "text-slate-500 hover:bg-white/60 hover:text-slate-900"
+          ? "bg-[#2f7d68] text-white shadow-sm"
+          : "text-slate-500 hover:bg-[#edf7f1] hover:text-slate-900"
       }`}
     >
       {label}
@@ -1447,7 +2005,7 @@ function ConditionBadge({ item }: { item: InventoryItem }) {
   const isAlert = needsAttention(item);
   const className = isAlert
     ? "bg-red-50 text-red-700"
-    : "bg-emerald-50 text-emerald-700";
+    : "bg-[#edf7f1] text-[#2f7d68]";
 
   return (
     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${className}`}>

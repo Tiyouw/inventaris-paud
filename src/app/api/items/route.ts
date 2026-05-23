@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { CONDITION_LOGS, INVENTORY_ITEMS } from "@/lib/inventory";
+import { CONDITION_LOGS, INVENTORY_ITEMS, INVENTORY_ZONES } from "@/lib/inventory";
 import {
   createInventoryItem,
   listInventory,
@@ -31,8 +31,9 @@ function handleInventoryError(error: unknown) {
       {
         items: INVENTORY_ITEMS,
         conditionLogs: CONDITION_LOGS,
+        zones: INVENTORY_ZONES,
         source: "seed",
-        message: `${error.message} Using local seed data instead.`,
+        message: `${error.message} Menggunakan data contoh lokal.`,
       },
       { status: 200 },
     );
@@ -62,7 +63,7 @@ function handleInventoryError(error: unknown) {
     {
       error: "INVENTORY_REQUEST_FAILED",
       message:
-        error instanceof Error ? error.message : "Inventory request failed.",
+        error instanceof Error ? error.message : "Permintaan inventaris gagal.",
     },
     { status: 500 },
   );

@@ -67,7 +67,7 @@ function handleInventoryError(error: unknown) {
     {
       error: "INVENTORY_REQUEST_FAILED",
       message:
-        error instanceof Error ? error.message : "Inventory request failed.",
+        error instanceof Error ? error.message : "Permintaan inventaris gagal.",
     },
     { status: 500 },
   );

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 
 import {
   INVENTORY_ITEMS,
-  getZoneById,
+  INVENTORY_ZONES,
   type InventoryItem,
+  type InventoryZone,
   type InventoryZoneId,
 } from "@/lib/inventory";
 import {
@@ -23,7 +24,8 @@ export async function GET(request: Request) {
     const payload = await listInventory();
     const items = filterItems(payload.items, zoneId);
     const report = createInventoryReport(items, {
-      title: createReportTitle(zoneId),
+      title: createReportTitle(zoneId, payload.zones),
+      zones: payload.zones,
     });
 
     return createHtmlResponse(createInventoryReportHtml(report));
@@ -31,7 +33,8 @@ export async function GET(request: Request) {
     if (error instanceof SupabaseConfigurationError) {
       const items = filterItems(INVENTORY_ITEMS, zoneId);
       const report = createInventoryReport(items, {
-        title: createReportTitle(zoneId),
+        title: createReportTitle(zoneId, INVENTORY_ZONES),
+        zones: INVENTORY_ZONES,
       });
 
       return createHtmlResponse(createInventoryReportHtml(report));
@@ -41,7 +44,7 @@ export async function GET(request: Request) {
       {
         error: "REPORT_FAILED",
         message:
-          error instanceof Error ? error.message : "Report generation failed.",
+          error instanceof Error ? error.message : "Pembuatan laporan gagal.",
       },
       { status: 500 },
     );
@@ -59,9 +62,14 @@ function filterItems(
     : activeItems;
 }
 
-function createReportTitle(zoneId: InventoryZoneId | null): string {
+function createReportTitle(
+  zoneId: InventoryZoneId | null,
+  zones: InventoryZone[],
+): string {
+  const zone = zoneId ? zones.find((entry) => entry.id === zoneId) : null;
+
   return zoneId
-    ? `Laporan Inventaris Zona ${getZoneById(zoneId).name}`
+    ? `Laporan Inventaris Zona ${zone?.name ?? zoneId}`
     : "Laporan Inventaris Makerspace";
 }
 

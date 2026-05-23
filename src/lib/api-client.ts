@@ -1,8 +1,9 @@
-import type { ConditionLog, InventoryItem } from "./inventory";
+import { INVENTORY_ZONES, type ConditionLog, type InventoryItem, type InventoryZone } from "./inventory";
 
 export type InventoryPayload = {
   items: InventoryItem[];
   conditionLogs: ConditionLog[];
+  zones: InventoryZone[];
   source: "supabase" | "seed";
   message?: string;
 };
@@ -10,6 +11,11 @@ export type InventoryPayload = {
 export type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
   id?: string;
   isActive?: boolean;
+};
+
+export type SaveInventoryZoneInput = {
+  name: string;
+  description?: string;
 };
 
 type ApiErrorPayload = {
@@ -26,6 +32,7 @@ export async function fetchInventory(): Promise<InventoryPayload> {
     return {
       items: [],
       conditionLogs: [],
+      zones: INVENTORY_ZONES,
       source: "seed",
       message: "Supabase belum dikonfigurasi. Menggunakan data contoh.",
     };
@@ -36,6 +43,51 @@ export async function fetchInventory(): Promise<InventoryPayload> {
   }
 
   return response.json() as Promise<InventoryPayload>;
+}
+
+export async function createInventoryZone(
+  zone: SaveInventoryZoneInput,
+): Promise<InventoryZone> {
+  const response = await fetch("/api/zones", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(zone),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+
+  const payload = (await response.json()) as { zone: InventoryZone };
+  return payload.zone;
+}
+
+export async function updateInventoryZone(
+  zoneId: string,
+  zone: SaveInventoryZoneInput,
+): Promise<InventoryZone> {
+  const response = await fetch(`/api/zones/${zoneId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(zone),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
+
+  const payload = (await response.json()) as { zone: InventoryZone };
+  return payload.zone;
+}
+
+export async function deleteInventoryZone(zoneId: string): Promise<void> {
+  const response = await fetch(`/api/zones/${zoneId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(await getApiError(response));
+  }
 }
 
 export async function createInventoryItem(
@@ -106,8 +158,8 @@ export async function uploadInventoryPhoto(
 async function getApiError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as ApiErrorPayload;
-    return payload.message ?? payload.error ?? `Request failed: ${response.status}`;
+    return payload.message ?? payload.error ?? `Permintaan gagal: ${response.status}`;
   } catch {
-    return `Request failed: ${response.status}`;
+    return `Permintaan gagal: ${response.status}`;
   }
 }
