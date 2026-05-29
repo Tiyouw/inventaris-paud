@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "fix",
   "description": "Fix zone isolation bug and add admin access, plus conditional report display. Three issues addressed: (1) Add school_id to zones table and filter zones per school throughout the stack. (2) Add Admin card to school selector that uses access code 'admin' and allows viewing all schools data. (3) Conditionally hide 'Per Zona' breakdown table in single-zone reports.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "STEP 1 - Database migration: Create a new migration file supabase/migrations/20260602_zone_school_id_and_admin.sql that: (a) Adds school_id column to zones table (nullable UUID referencing schools.id), (b) Creates index on zones(school_id), (c) Updates the zones slug unique constraint to be a composite unique on (slug, school_id) to allow same slug in different schools. Use IF NOT EXISTS / idempotent patterns.",
     "STEP 2 - Zone isolation in inventory-store.ts: (a) Modify createInventoryZone() to accept and persist school_id. Add school_id to the insert payload. (b) Modify listInventory() to filter zones by school_id when schoolId is provided (add .eq('school_id', schoolId) to the zones query). When no schoolId provided (admin mode), load all zones without filter. (c) Modify updateInventoryZone() and deleteInventoryZone() to accept optional schoolId param for scoping if needed.",
@@ -32,5 +32,5 @@
     "Run: cd /projects/sandbox/inventaris-paud && pnpm lint"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build and lint pass cleanly. All 8 steps implemented successfully. The zone isolation filters zones by school_id on the server side. Admin mode bypasses school_id filtering to show all data."
 }
