@@ -679,8 +679,6 @@ export default function Home() {
 
     try {
       await softDeleteInventoryItem(itemId);
-      await refreshInventoryFromApi("Barang berhasil dihapus dari daftar aktif.");
-      showToast("Barang berhasil dihapus dari daftar aktif.");
     } catch (error) {
       setItems(previousItems);
       setSyncStatus(
@@ -689,6 +687,15 @@ export default function Home() {
           : "Gagal menghapus barang.",
       );
       showToast("Gagal menghapus barang. Coba ulangi.", "error");
+      return;
+    }
+
+    showToast("Barang berhasil dihapus dari daftar aktif.");
+
+    try {
+      await refreshInventoryFromApi("Barang berhasil dihapus dari daftar aktif.");
+    } catch {
+      // Refresh failed but delete already succeeded, don't show error
     }
   }
 
@@ -808,12 +815,6 @@ export default function Home() {
     if (dataSource === "supabase") {
       try {
         await deleteInventoryZone(zone.id);
-        await refreshInventoryFromApi("Zona berhasil dihapus dari Supabase.");
-        if (selectedZoneId === zone.id) {
-          setSelectedZoneId(null);
-        }
-        setZoneDeleteTarget(null);
-        showToast("Zona berhasil dihapus.");
       } catch (error) {
         setZoneDeleteTarget(null);
         showToast(
@@ -822,6 +823,19 @@ export default function Home() {
             : "Zona belum bisa dihapus. Coba ulangi.",
           "error",
         );
+        return;
+      }
+
+      if (selectedZoneId === zone.id) {
+        setSelectedZoneId(null);
+      }
+      setZoneDeleteTarget(null);
+      showToast("Zona berhasil dihapus.");
+
+      try {
+        await refreshInventoryFromApi("Zona berhasil dihapus dari Supabase.");
+      } catch {
+        // Refresh failed but delete already succeeded, don't show error
       }
 
       return;
@@ -1135,18 +1149,24 @@ function DashboardView({
 }
 
 function SchoolManagementSection() {
-  const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
+  const [schools, setSchools] = useState<Array<{ id: string; name: string; access_code?: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [schoolName, setSchoolName] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [formStatus, setFormStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCode, setEditCode] = useState("");
+  const [editStatus, setEditStatus] = useState("");
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/schools")
+    fetch("/api/schools?include_codes=true")
       .then((res) => res.json())
-      .then((data: { schools: Array<{ id: string; name: string }> }) => {
+      .then((data: { schools: Array<{ id: string; name: string; access_code?: string }> }) => {
         setSchools(data.schools.filter((s) => s.id !== "admin"));
         setIsLoading(false);
       })
@@ -1185,8 +1205,8 @@ function SchoolManagementSection() {
         throw new Error(errorData.error ?? "Gagal menambahkan sekolah.");
       }
 
-      const data = (await response.json()) as { school: { id: string; name: string } };
-      setSchools((prev) => [...prev, data.school]);
+      const data = (await response.json()) as { school: { id: string; name: string; access_code?: string } };
+      setSchools((prev) => [...prev, { ...data.school, access_code: code }]);
       setSchoolName("");
       setAccessCode("");
       setShowForm(false);
@@ -1196,6 +1216,86 @@ function SchoolManagementSection() {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  function startEdit(school: { id: string; name: string; access_code?: string }) {
+    setEditingId(school.id);
+    setEditName(school.name);
+    setEditCode(school.access_code ?? "");
+    setEditStatus("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+    setEditCode("");
+    setEditStatus("");
+  }
+
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingId) return;
+
+    const name = editName.trim();
+    const code = editCode.trim();
+
+    if (!name) {
+      setEditStatus("Nama sekolah wajib diisi.");
+      return;
+    }
+
+    if (!code) {
+      setEditStatus("Kode akses wajib diisi.");
+      return;
+    }
+
+    setIsEditSaving(true);
+    setEditStatus("");
+
+    try {
+      const response = await fetch(`/api/schools/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, access_code: code }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as { error?: string };
+        throw new Error(errorData.error ?? "Gagal memperbarui sekolah.");
+      }
+
+      setSchools((prev) =>
+        prev.map((s) =>
+          s.id === editingId ? { ...s, name, access_code: code } : s,
+        ),
+      );
+      cancelEdit();
+    } catch (error) {
+      setEditStatus(
+        error instanceof Error ? error.message : "Gagal memperbarui sekolah.",
+      );
+    } finally {
+      setIsEditSaving(false);
+    }
+  }
+
+  async function handleDelete(schoolId: string) {
+    try {
+      const response = await fetch(`/api/schools/${schoolId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as { error?: string };
+        throw new Error(errorData.error ?? "Gagal menghapus sekolah.");
+      }
+
+      setSchools((prev) => prev.filter((s) => s.id !== schoolId));
+    } catch {
+      // Deletion failed silently handled
+    } finally {
+      setDeleteConfirmId(null);
     }
   }
 
@@ -1293,10 +1393,100 @@ function SchoolManagementSection() {
               key={school.id}
               className="rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] p-4"
             >
-              <p className="font-black text-slate-950">{school.name}</p>
-              <p className="mt-1 text-xs font-bold text-slate-400">
-                ID: {school.id}
-              </p>
+              {editingId === school.id ? (
+                <form onSubmit={handleEditSubmit} className="space-y-3">
+                  {editStatus ? (
+                    <p className="rounded-2xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                      {editStatus}
+                    </p>
+                  ) : null}
+                  <label className="block">
+                    <span className="text-xs font-black uppercase text-slate-400">
+                      Nama Sekolah
+                    </span>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="mt-1 h-10 w-full rounded-xl border border-[#dbe9de] bg-white px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-black uppercase text-slate-400">
+                      Kode Akses
+                    </span>
+                    <input
+                      type="text"
+                      value={editCode}
+                      onChange={(e) => setEditCode(e.target.value)}
+                      className="mt-1 h-10 w-full rounded-xl border border-[#dbe9de] bg-white px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]"
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="min-h-10 flex-1 rounded-full bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isEditSaving}
+                      className="min-h-10 flex-1 rounded-full bg-[#2f7d68] px-3 py-2 text-xs font-black text-white disabled:opacity-60"
+                    >
+                      {isEditSaving ? "Menyimpan..." : "Simpan"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <p className="font-black text-slate-950">{school.name}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-400">
+                    Kode Akses: {school.access_code ?? "-"}
+                  </p>
+                  {deleteConfirmId === school.id ? (
+                    <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3">
+                      <p className="text-xs font-bold text-red-700">
+                        Yakin hapus sekolah ini?
+                      </p>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="min-h-9 flex-1 rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-600 ring-1 ring-slate-200"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(school.id)}
+                          className="min-h-9 flex-1 rounded-full bg-red-600 px-3 py-1.5 text-xs font-black text-white"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(school)}
+                        className="min-h-10 flex-1 rounded-full bg-white px-3 py-2 text-xs font-black text-[#2f7d68] ring-1 ring-[#dbe9de] transition hover:bg-[#f7fbf6]"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(school.id)}
+                        className="min-h-10 flex-1 rounded-full bg-white px-3 py-2 text-xs font-black text-red-600 ring-1 ring-red-100 transition hover:bg-red-50"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           ))}
         </div>
