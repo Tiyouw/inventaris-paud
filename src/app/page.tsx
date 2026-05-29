@@ -1483,6 +1483,7 @@ function ZonesView({
                 key={zone.id}
                 className={`relative flex min-h-[17rem] flex-col rounded-3xl border border-[#dbe9de] ${visual.theme} p-5 text-left shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-lg`}
               >
+                {!isAdmin ? (
                 <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
                   <button
                     type="button"
@@ -1501,6 +1502,7 @@ function ZonesView({
                     <TrashIcon />
                   </button>
                 </div>
+                ) : null}
                 <div className="flex justify-center">
                   <div
                     className={`grid h-20 w-20 place-items-center rounded-3xl ${visual.iconBg} text-2xl font-black shadow-sm ring-1 ring-white/70`}
@@ -1571,12 +1573,14 @@ function ZonesView({
           >
             Cetak Zona
           </button>
+          {!isAdmin ? (
           <button
             onClick={onAddItem}
             className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
           >
             Tambah Barang
           </button>
+          ) : null}
         </div>
       </div>
 
@@ -1664,6 +1668,8 @@ function ZonesView({
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-2">
+                          {!isAdmin ? (
+                          <>
                           <button
                             onClick={() => onEditItem(item)}
                             className="min-h-10 rounded-full bg-[#fff2f6] px-4 py-2 text-xs font-black text-[#9d3e67] ring-1 ring-[#f3d6e2]"
@@ -1676,6 +1682,8 @@ function ZonesView({
                           >
                             Hapus
                           </button>
+                          </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

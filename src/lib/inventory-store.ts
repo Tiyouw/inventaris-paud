@@ -160,9 +160,9 @@ export async function listInventory(schoolId?: string): Promise<InventoryPayload
     .select("id, item_id, new_condition_id, notes, checked_by, checked_at")
     .order("checked_at", { ascending: false });
 
-  if (schoolId && activeItemIds.size > 0) {
+  if (activeItemIds.size > 0) {
     logsQuery = logsQuery.in("item_id", [...activeItemIds]);
-  } else if (schoolId && activeItemIds.size === 0) {
+  } else {
     return { items, conditionLogs: [], zones, source: "supabase" };
   }
 
@@ -308,7 +308,7 @@ export async function createInventoryZone(
 ): Promise<InventoryZone> {
   const name = validateZoneInput(input);
   const supabase = requireSupabaseClient();
-  const slug = await createUniqueZoneSlug(supabase, name);
+  const slug = await createUniqueZoneSlug(supabase, name, input.school_id);
 
   const { data, error } = await supabase
     .from("zones")
@@ -637,12 +637,13 @@ function validateZoneInput(input: SaveInventoryZoneInput): string {
 async function createUniqueZoneSlug(
   supabase: SupabaseClient,
   name: string,
+  schoolId?: string | null,
 ): Promise<string> {
   const baseSlug = slugifyZoneName(name);
   let candidate = baseSlug;
   let suffix = 2;
 
-  while (await zoneSlugExists(supabase, candidate)) {
+  while (await zoneSlugExists(supabase, candidate, schoolId)) {
     candidate = `${baseSlug}-${suffix}`;
     suffix += 1;
   }
@@ -653,12 +654,20 @@ async function createUniqueZoneSlug(
 async function zoneSlugExists(
   supabase: SupabaseClient,
   slug: string,
+  schoolId?: string | null,
 ): Promise<boolean> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("zones")
     .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
+    .eq("slug", slug);
+
+  if (schoolId) {
+    query = query.eq("school_id", schoolId);
+  } else {
+    query = query.is("school_id", null);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle();
 
   if (error) {
     throw error;
