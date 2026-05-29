@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Create the schools table migration, seed data, SchoolContext, school selection page, protected route logic, nav integration, and data isolation - the full Netflix-style school selector feature.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1 - Database migration: Create `supabase/migrations/20260601_schools_table.sql` that creates a `schools` table with columns: id (uuid PK default gen_random_uuid()), name (text not null), access_code (text not null), created_at (timestamptz default now()). Seed with the 5 schools: 'TK Dewi Masyithoh 69 Keting' (code '69'), 'TK Dewi Masyithoh 59 Jombang' (code '59'), 'TK DARUTTAQWA Jombang' (code '01'), 'TK Dewi Masyithoh 15 Keting' (code '15'), 'TK Dharma Wanita 02 Padomasan' (code '02'). Also add school_id (uuid references schools.id) column to the items table and item_condition_logs table for data isolation. Add index on items(school_id).",
     "Step 2 - API route for schools: Create `src/app/api/schools/route.ts` with GET (list all schools - name and id only, NOT access_code) and `src/app/api/schools/verify/route.ts` with POST that accepts {schoolId, accessCode} and verifies against the DB, returning {valid: true, school: {id, name}} or {valid: false}.",
@@ -31,5 +31,5 @@
     "pnpm build"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 8 steps implemented successfully. Used useSyncExternalStore instead of useState+useEffect for SchoolContext to satisfy the react-hooks/set-state-in-effect ESLint rule. isHydrated is always true with useSyncExternalStore since getServerSnapshot handles the SSR case. pnpm lint and pnpm build both pass cleanly. 12 routes generated including /select-school and /api/schools/*."
 }
