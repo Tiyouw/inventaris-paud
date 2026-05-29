@@ -30,6 +30,7 @@ export async function GET(request: Request) {
       title: createReportTitle(zoneId, payload.zones, schoolName),
       zones: payload.zones,
       schoolName,
+      isSingleZone: Boolean(zoneId),
     });
 
     return createHtmlResponse(createInventoryReportHtml(report));
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
       const report = createInventoryReport(items, {
         title: createReportTitle(zoneId, INVENTORY_ZONES),
         zones: INVENTORY_ZONES,
+        isSingleZone: Boolean(zoneId),
       });
 
       return createHtmlResponse(createInventoryReportHtml(report));

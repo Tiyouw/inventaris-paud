@@ -8,7 +8,8 @@ import {
 
 export async function POST(request: Request) {
   try {
-    const zone = await createInventoryZone(await request.json());
+    const body = await request.json();
+    const zone = await createInventoryZone(body);
     return NextResponse.json({ zone }, { status: 201 });
   } catch (error) {
     return handleZoneError(error);

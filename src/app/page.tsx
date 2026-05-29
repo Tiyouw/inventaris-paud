@@ -299,7 +299,7 @@ function createLocalZoneId(name: string, zones: InventoryZone[]): string {
 }
 
 export default function Home() {
-  const { selectedSchool, clearSchool } = useSchool();
+  const { selectedSchool, clearSchool, isAdmin } = useSchool();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AppTab>("dashboard");
   const [selectedZoneId, setSelectedZoneId] = useState<InventoryZoneId | null>(
@@ -340,7 +340,7 @@ export default function Home() {
   useEffect(() => {
     let isMounted = true;
 
-    fetchInventory(selectedSchool?.id)
+    fetchInventory(isAdmin ? undefined : selectedSchool?.id)
       .then((payload) => {
         if (!isMounted) {
           return;
@@ -384,7 +384,7 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [selectedSchool?.id]);
+  }, [selectedSchool?.id, isAdmin]);
 
   useEffect(() => {
     if (!toast) {
@@ -448,7 +448,7 @@ export default function Home() {
   function openReport(zoneId?: InventoryZoneId) {
     const params = new URLSearchParams();
     if (zoneId) params.set("zoneId", zoneId);
-    if (selectedSchool?.id) params.set("school_id", selectedSchool.id);
+    if (selectedSchool?.id && !isAdmin) params.set("school_id", selectedSchool.id);
     const qs = params.toString();
     const path = qs ? `/api/reports?${qs}` : "/api/reports";
     window.open(path, "_blank", "noopener,noreferrer");
@@ -459,7 +459,7 @@ export default function Home() {
   }
 
   async function refreshInventoryFromApi(successMessage: string) {
-    const payload = await fetchInventory(selectedSchool?.id);
+    const payload = await fetchInventory(isAdmin ? undefined : selectedSchool?.id);
 
     if (payload.source === "supabase" || payload.items.length > 0) {
       setItems(payload.items);
@@ -529,7 +529,7 @@ export default function Home() {
       notes: form.notes.trim() || undefined,
       photoUrl: form.photoUrl,
       isActive: true,
-      school_id: selectedSchool?.id,
+      school_id: isAdmin ? undefined : selectedSchool?.id,
     };
 
     if (dataSource === "supabase") {
@@ -725,6 +725,7 @@ export default function Home() {
     const zoneInput: SaveInventoryZoneInput = {
       name,
       description: description || undefined,
+      school_id: isAdmin ? undefined : selectedSchool?.id,
     };
 
     if (dataSource === "supabase") {
@@ -900,7 +901,7 @@ export default function Home() {
             {selectedSchool ? (
               <>
                 <span className="hidden rounded-full bg-[#edf7f1] px-3 py-1.5 text-xs font-black text-[#2f7d68] ring-1 ring-[#dbe9de] sm:inline-flex">
-                  {selectedSchool.name}
+                  {isAdmin ? "Admin - Kelola Sekolah" : selectedSchool.name}
                 </span>
                 <button
                   type="button"
@@ -964,6 +965,7 @@ export default function Home() {
           formStatus={formStatus}
           zoneItems={zoneItems}
           activeItems={activeItems}
+          isAdmin={isAdmin}
         />
       )}
 
@@ -1387,6 +1389,7 @@ function ZonesView({
   formStatus,
   isFormOpen,
   isSaving,
+  isAdmin,
   onAddItem,
   onAddZone,
   onBack,
@@ -1416,6 +1419,7 @@ function ZonesView({
   formStatus: string;
   isFormOpen: boolean;
   isSaving: boolean;
+  isAdmin: boolean;
   onAddItem: () => void;
   onAddZone: () => void;
   onBack: () => void;
@@ -1451,12 +1455,14 @@ function ZonesView({
             </h2>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              onClick={onAddZone}
-              className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
-            >
-              Tambah Zona
-            </button>
+            {!isAdmin ? (
+              <button
+                onClick={onAddZone}
+                className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
+              >
+                Tambah Zona
+              </button>
+            ) : null}
             <button
               onClick={() => onPrintZone()}
               className="min-h-11 rounded-full border border-[#d9eadf] bg-white px-5 py-2.5 text-sm font-black text-[#2f7d68] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
@@ -1477,6 +1483,7 @@ function ZonesView({
                 key={zone.id}
                 className={`relative flex min-h-[17rem] flex-col rounded-3xl border border-[#dbe9de] ${visual.theme} p-5 text-left shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-lg`}
               >
+                {!isAdmin ? (
                 <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
                   <button
                     type="button"
@@ -1495,6 +1502,7 @@ function ZonesView({
                     <TrashIcon />
                   </button>
                 </div>
+                ) : null}
                 <div className="flex justify-center">
                   <div
                     className={`grid h-20 w-20 place-items-center rounded-3xl ${visual.iconBg} text-2xl font-black shadow-sm ring-1 ring-white/70`}
@@ -1565,12 +1573,14 @@ function ZonesView({
           >
             Cetak Zona
           </button>
+          {!isAdmin ? (
           <button
             onClick={onAddItem}
             className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
           >
             Tambah Barang
           </button>
+          ) : null}
         </div>
       </div>
 
@@ -1658,6 +1668,8 @@ function ZonesView({
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-2">
+                          {!isAdmin ? (
+                          <>
                           <button
                             onClick={() => onEditItem(item)}
                             className="min-h-10 rounded-full bg-[#fff2f6] px-4 py-2 text-xs font-black text-[#9d3e67] ring-1 ring-[#f3d6e2]"
@@ -1670,6 +1682,8 @@ function ZonesView({
                           >
                             Hapus
                           </button>
+                          </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

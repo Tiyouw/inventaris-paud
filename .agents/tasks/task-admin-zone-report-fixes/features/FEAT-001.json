@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Fix zone isolation bug and add admin access, plus conditional report display. Three issues addressed: (1) Add school_id to zones table and filter zones per school throughout the stack. (2) Add Admin card to school selector that uses access code 'admin' and allows viewing all schools data. (3) Conditionally hide 'Per Zona' breakdown table in single-zone reports.",
+  "status": "completed",
+  "steps": [
+    "STEP 1 - Database migration: Create a new migration file supabase/migrations/20260602_zone_school_id_and_admin.sql that: (a) Adds school_id column to zones table (nullable UUID referencing schools.id), (b) Creates index on zones(school_id), (c) Updates the zones slug unique constraint to be a composite unique on (slug, school_id) to allow same slug in different schools. Use IF NOT EXISTS / idempotent patterns.",
+    "STEP 2 - Zone isolation in inventory-store.ts: (a) Modify createInventoryZone() to accept and persist school_id. Add school_id to the insert payload. (b) Modify listInventory() to filter zones by school_id when schoolId is provided (add .eq('school_id', schoolId) to the zones query). When no schoolId provided (admin mode), load all zones without filter. (c) Modify updateInventoryZone() and deleteInventoryZone() to accept optional schoolId param for scoping if needed.",
+    "STEP 3 - Zone API routes: (a) In src/app/api/zones/route.ts POST handler, read school_id from request body and pass to createInventoryZone(). (b) In src/app/api/zones/[id]/route.ts, pass through school_id from request body/params if provided for update/delete scoping.",
+    "STEP 4 - Client-side zone creation: In src/lib/api-client.ts, modify createInventoryZone() to accept and send school_id in the request body. Update SaveInventoryZoneInput type to include optional school_id. In src/app/page.tsx, pass selectedSchool.id as school_id when creating a zone via the zone form submit handler.",
+    "STEP 5 - Admin access: (a) In src/app/api/schools/route.ts, add an admin entry to the HARDCODED_SCHOOLS array: { id: 'admin', name: 'Admin' }. When using Supabase, prepend the admin entry to the returned schools list. (b) In src/app/api/schools/verify/route.ts, add admin verification: if schoolId is 'admin' and accessCode is 'admin', return valid with school { id: 'admin', name: 'Admin' }. This should be checked before the Supabase query. (c) In src/app/select-school/page.tsx, render the admin card differently from school cards - use a distinct visual (e.g., a gear/settings icon or 'ADM' initials) and label it 'Kelola Sekolah' instead of just the name. Place it after the school cards as a separate visually distinct card.",
+    "STEP 6 - Admin mode in SchoolGuard and main page: (a) In src/lib/school-context.tsx, add a computed isAdmin property to SchoolContextValue that returns true when selectedSchool.id === 'admin'. (b) In src/components/SchoolGuard.tsx, allow admin through (no changes needed since admin is a valid selectedSchool). (c) In src/app/page.tsx, when isAdmin is true: pass undefined as schoolId to fetchInventory (to load all data), hide 'Ganti Sekolah' badge or show 'Admin' badge, and in zone creation, do NOT pass school_id (since admin sees all). Show the school name badge as 'Admin - Kelola Sekolah'.",
+    "STEP 7 - Report conditional Per Zona display: (a) In src/app/api/reports/route.ts, pass a new option isSingleZone: Boolean(zoneId) to createInventoryReportHtml or pass it through the report object. (b) In src/lib/reporting.ts, add an optional isSingleZone field to InventoryReport type. In createInventoryReportHtml(), conditionally render the 'Per Zona' breakdown table - only include createCountTableHtml('Per Zona', report.summary.byZone) when isSingleZone is false/undefined. When isSingleZone is true, replace it with the 'Per Jenis' (byType) table or simply omit it, keeping the other two breakdown tables (Per Kondisi, Per Asal Barang). (c) In createInventoryReport(), pass through isSingleZone from options to the report object.",
+    "STEP 8 - Verify build: Run pnpm build and pnpm lint to ensure no TypeScript or lint errors."
+  ],
+  "acceptance_criteria": [
+    "pnpm build succeeds without errors",
+    "pnpm lint passes without errors",
+    "The zones table migration adds school_id column",
+    "createInventoryZone in inventory-store.ts inserts school_id into the zones table",
+    "listInventory filters zones by school_id when schoolId is provided",
+    "The POST /api/zones endpoint accepts and passes school_id",
+    "The client-side createInventoryZone sends school_id from the selected school",
+    "Admin card appears on the select-school page with label 'Kelola Sekolah'",
+    "Access code 'admin' with schoolId 'admin' is accepted by the verify endpoint",
+    "Admin mode loads all data without school_id filter",
+    "Single-zone reports do NOT include the 'Per Zona' breakdown table",
+    "All-zones reports still include the 'Per Zona' breakdown table"
+  ],
+  "verification": [
+    "Run: cd /projects/sandbox/inventaris-paud && pnpm build",
+    "Run: cd /projects/sandbox/inventaris-paud && pnpm lint"
+  ],
+  "blocked_reason": null,
+  "findings": "Build and lint pass cleanly. All 8 steps implemented successfully. The zone isolation filters zones by school_id on the server side. Admin mode bypasses school_id filtering to show all data."
+}

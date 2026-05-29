@@ -21,6 +21,15 @@ export async function POST(request: Request) {
     );
   }
 
+  // Admin access shortcut
+  const adminAccessCode = process.env.ADMIN_ACCESS_CODE || "admin";
+  if (schoolId === "admin" && accessCode === adminAccessCode) {
+    return NextResponse.json({
+      valid: true,
+      school: { id: "admin", name: "Admin" },
+    });
+  }
+
   const supabase = getSupabaseServerClient();
 
   if (!supabase) {

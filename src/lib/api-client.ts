@@ -17,6 +17,7 @@ export type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
 export type SaveInventoryZoneInput = {
   name: string;
   description?: string;
+  school_id?: string;
 };
 
 type ApiErrorPayload = {
