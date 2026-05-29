@@ -30,3 +30,47 @@ export async function GET() {
 
   return NextResponse.json({ schools: [...(data ?? HARDCODED_SCHOOLS), ADMIN_ENTRY] });
 }
+
+export async function POST(request: Request) {
+  const supabase = getSupabaseServerClient();
+
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Supabase belum dikonfigurasi." },
+      { status: 503 },
+    );
+  }
+
+  const body = (await request.json()) as { name?: string; access_code?: string };
+  const name = body.name?.trim();
+  const accessCode = body.access_code?.trim();
+
+  if (!name) {
+    return NextResponse.json(
+      { error: "Nama sekolah wajib diisi." },
+      { status: 400 },
+    );
+  }
+
+  if (!accessCode) {
+    return NextResponse.json(
+      { error: "Kode akses wajib diisi." },
+      { status: 400 },
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("schools")
+    .insert({ name, access_code: accessCode })
+    .select("id, name")
+    .single();
+
+  if (error) {
+    return NextResponse.json(
+      { error: error.message ?? "Gagal menambahkan sekolah." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ school: data }, { status: 201 });
+}
