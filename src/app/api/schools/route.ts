@@ -1,31 +1,39 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { getSupabaseServerClient } from "@/lib/supabase";
 
 const HARDCODED_SCHOOLS = [
-  { id: "school-1", name: "TK Dewi Masyithoh 69 Keting" },
-  { id: "school-2", name: "TK Dewi Masyithoh 59 Jombang" },
-  { id: "school-3", name: "TK DARUTTAQWA Jombang" },
-  { id: "school-4", name: "TK Dewi Masyithoh 15 Keting" },
-  { id: "school-5", name: "TK Dharma Wanita 02 Padomasan" },
+  { id: "school-1", name: "TK Dewi Masyithoh 69 Keting", access_code: "69" },
+  { id: "school-2", name: "TK Dewi Masyithoh 59 Jombang", access_code: "59" },
+  { id: "school-3", name: "TK DARUTTAQWA Jombang", access_code: "01" },
+  { id: "school-4", name: "TK Dewi Masyithoh 15 Keting", access_code: "15" },
+  { id: "school-5", name: "TK Dharma Wanita 02 Padomasan", access_code: "02" },
 ];
 
 const ADMIN_ENTRY = { id: "admin", name: "Admin" };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const includeCodes = request.nextUrl.searchParams.get("include_codes") === "true";
   const supabase = getSupabaseServerClient();
 
   if (!supabase) {
-    return NextResponse.json({ schools: [...HARDCODED_SCHOOLS, ADMIN_ENTRY] });
+    const schools = HARDCODED_SCHOOLS.map((s) =>
+      includeCodes ? s : { id: s.id, name: s.name },
+    );
+    return NextResponse.json({ schools: [...schools, ADMIN_ENTRY] });
   }
 
+  const selectFields = includeCodes ? "id, name, access_code" : "id, name";
   const { data, error } = await supabase
     .from("schools")
-    .select("id, name")
+    .select(selectFields)
     .order("name");
 
   if (error) {
-    return NextResponse.json({ schools: [...HARDCODED_SCHOOLS, ADMIN_ENTRY] });
+    const schools = HARDCODED_SCHOOLS.map((s) =>
+      includeCodes ? s : { id: s.id, name: s.name },
+    );
+    return NextResponse.json({ schools: [...schools, ADMIN_ENTRY] });
   }
 
   return NextResponse.json({ schools: [...(data ?? HARDCODED_SCHOOLS), ADMIN_ENTRY] });

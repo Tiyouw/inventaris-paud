@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Full CRUD for school management, fix zone/item delete toast behavior, show access code instead of ID on school cards",
+  "status": "completed",
+  "steps": [
+    "STEP 1 - Update GET /api/schools to support include_codes=true query param that returns access_code field",
+    "STEP 2 - Create /api/schools/[id]/route.ts with PUT (update name+access_code) and DELETE handlers",
+    "STEP 3 - Fix confirmDeleteZone to separate delete and refresh into distinct try/catch blocks",
+    "STEP 4 - Fix confirmDeleteItem to separate delete and refresh into distinct try/catch blocks",
+    "STEP 5 - Update SchoolManagementSection: fetch with include_codes, show access_code instead of ID, add Edit and Hapus buttons with inline edit form and delete confirmation"
+  ],
+  "acceptance_criteria": [
+    "pnpm build succeeds without errors",
+    "pnpm lint passes without errors",
+    "GET /api/schools?include_codes=true returns access_code field",
+    "PUT /api/schools/[id] updates school name and access_code",
+    "DELETE /api/schools/[id] deletes a school",
+    "Zone delete shows success toast even if refresh fails",
+    "Item delete shows success toast even if refresh fails",
+    "School cards show access code instead of ID",
+    "School cards have Edit and Hapus buttons",
+    "Edit opens inline form to change name and access_code",
+    "Hapus shows confirmation before deleting"
+  ],
+  "verification": [
+    "Run: cd /projects/sandbox/inventaris-paud && pnpm build",
+    "Run: cd /projects/sandbox/inventaris-paud && pnpm lint"
+  ],
+  "blocked_reason": null,
+  "findings": "All three issues implemented. Build and lint pass. (1) GET /api/schools supports include_codes=true param, (2) New /api/schools/[id]/route.ts with PUT+DELETE, (3) confirmDeleteZone and confirmDeleteItem use separate try/catch blocks, (4) SchoolManagementSection shows access codes, supports inline edit and delete with confirmation."
+}
