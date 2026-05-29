@@ -7,9 +7,11 @@ import {
   SupabaseConfigurationError,
 } from "@/lib/inventory-store";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const payload = await listInventory();
+    const url = new URL(request.url);
+    const schoolId = url.searchParams.get("school_id") ?? undefined;
+    const payload = await listInventory(schoolId);
     return NextResponse.json(payload);
   } catch (error) {
     return handleInventoryError(error);
@@ -18,7 +20,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const item = await createInventoryItem(await request.json());
+    const body = await request.json();
+    const item = await createInventoryItem(body);
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
     return handleInventoryError(error);

@@ -78,6 +78,7 @@ export type InventoryReport = {
   rows: InventoryReportRow[];
   summary: InventoryReportSummary;
   photoAppendix: InventoryPhotoAppendixEntry[];
+  schoolName?: string;
 };
 
 export type InventoryReportOptions = {
@@ -85,6 +86,7 @@ export type InventoryReportOptions = {
   generatedAt?: string;
   includeInactive?: boolean;
   zones?: InventoryZone[];
+  schoolName?: string;
 };
 
 const CONDITION_LABELS: Record<ConditionTypeId, string> = {
@@ -133,6 +135,7 @@ export function createInventoryReport(
     rows: createInventoryReportRows(reportItems, zones),
     summary: summarizeInventoryForReport(reportItems, zones),
     photoAppendix: createPhotoAppendixData(reportItems, zones),
+    schoolName: options.schoolName,
   };
 }
 
@@ -172,6 +175,9 @@ export function createInventoryReportRows(
 
 export function createInventoryReportHtml(report: InventoryReport): string {
   const generatedAt = formatDateTime(report.generatedAt);
+  const schoolLine = report.schoolName
+    ? `<p class="muted" style="margin-top:4px;font-weight:700;">${escapeHtml(report.schoolName)}</p>`
+    : "";
 
   return `<!doctype html>
 <html lang="id">
@@ -347,6 +353,7 @@ export function createInventoryReportHtml(report: InventoryReport): string {
     <main>
       <header>
         <h1>${escapeHtml(report.title)}</h1>
+        ${schoolLine}
         <p class="muted">Dibuat pada ${escapeHtml(generatedAt)}. Gunakan dialog cetak browser untuk menyimpan sebagai PDF.</p>
         <div class="actions">
           <a class="button secondary" href="/">Kembali ke Aplikasi</a>

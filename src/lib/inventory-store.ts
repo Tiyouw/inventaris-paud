@@ -30,6 +30,7 @@ type InventoryPayload = {
 type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
   id?: string;
   isActive?: boolean;
+  school_id?: string;
 };
 
 export type SaveInventoryZoneInput = {
@@ -110,17 +111,24 @@ const LEGACY_CONDITION_MAP: Record<string, ConditionTypeId> = {
   missing: "tidak-layak-pakai",
 };
 
-export async function listInventory(): Promise<InventoryPayload> {
+export async function listInventory(schoolId?: string): Promise<InventoryPayload> {
   const supabase = requireSupabaseClient();
+
+  let itemsQuery = supabase
+    .from("items")
+    .select(
+      "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
+    )
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false });
+
+  if (schoolId) {
+    itemsQuery = itemsQuery.eq("school_id", schoolId);
+  }
+
   const [zonesResult, itemsResult, logsResult] = await Promise.all([
     supabase.from("zones").select("id, name, slug, description").order("name"),
-    supabase
-      .from("items")
-      .select(
-        "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
-      )
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false }),
+    itemsQuery,
     supabase
       .from("item_condition_logs")
       .select("id, item_id, new_condition_id, notes, checked_by, checked_at")
@@ -438,6 +446,7 @@ function toDbItemInsert(
     notes: input.notes ?? null,
     last_checked_at: toTimestamp(input.lastCheckedAt) ?? checkedAt,
     is_active: input.isActive ?? true,
+    school_id: input.school_id ?? null,
   };
 }
 
