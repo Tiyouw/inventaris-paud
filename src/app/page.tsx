@@ -926,6 +926,7 @@ export default function Home() {
           syncStatus={syncStatus}
           zones={zones}
           onOpenZone={openZone}
+          isAdmin={isAdmin}
         />
       ) : (
         <ZonesView
@@ -965,7 +966,6 @@ export default function Home() {
           formStatus={formStatus}
           zoneItems={zoneItems}
           activeItems={activeItems}
-          isAdmin={isAdmin}
         />
       )}
 
@@ -1035,12 +1035,14 @@ function DashboardView({
   syncStatus,
   zones,
   onOpenZone,
+  isAdmin,
 }: {
   activeItems: InventoryItem[];
   stats: ReturnType<typeof getDashboardStats>;
   syncStatus: string;
   zones: InventoryZone[];
   onOpenZone: (zoneId: InventoryZoneId) => void;
+  isAdmin: boolean;
 }) {
   return (
     <section className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
@@ -1126,6 +1128,179 @@ function DashboardView({
           })}
         </div>
       </section>
+
+      {isAdmin ? <SchoolManagementSection /> : null}
+    </section>
+  );
+}
+
+function SchoolManagementSection() {
+  const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [schoolName, setSchoolName] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [formStatus, setFormStatus] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/schools")
+      .then((res) => res.json())
+      .then((data: { schools: Array<{ id: string; name: string }> }) => {
+        setSchools(data.schools.filter((s) => s.id !== "admin"));
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setIsLoading(false);
+      });
+  }, []);
+
+  async function handleAddSchool(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = schoolName.trim();
+    const code = accessCode.trim();
+
+    if (!name) {
+      setFormStatus("Nama sekolah wajib diisi.");
+      return;
+    }
+
+    if (!code) {
+      setFormStatus("Kode akses wajib diisi.");
+      return;
+    }
+
+    setIsSaving(true);
+    setFormStatus("");
+
+    try {
+      const response = await fetch("/api/schools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, access_code: code }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as { error?: string };
+        throw new Error(errorData.error ?? "Gagal menambahkan sekolah.");
+      }
+
+      const data = (await response.json()) as { school: { id: string; name: string } };
+      setSchools((prev) => [...prev, data.school]);
+      setSchoolName("");
+      setAccessCode("");
+      setShowForm(false);
+    } catch (error) {
+      setFormStatus(
+        error instanceof Error ? error.message : "Gagal menambahkan sekolah.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <section className="rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-black text-slate-950">Kelola Sekolah</h2>
+          <p className="text-sm font-semibold text-slate-500">
+            Daftar sekolah yang terdaftar di sistem.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowForm(!showForm)}
+          className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
+        >
+          Tambah Sekolah
+        </button>
+      </div>
+
+      {showForm ? (
+        <form
+          onSubmit={handleAddSchool}
+          className="mb-5 rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] p-4"
+        >
+          <h3 className="text-base font-black text-slate-950">
+            Sekolah Baru
+          </h3>
+          {formStatus ? (
+            <p className="mt-2 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+              {formStatus}
+            </p>
+          ) : null}
+          <div className="mt-3 space-y-3">
+            <label className="block">
+              <span className="text-xs font-black uppercase text-slate-400">
+                Nama Sekolah
+              </span>
+              <input
+                type="text"
+                value={schoolName}
+                onChange={(e) => setSchoolName(e.target.value)}
+                placeholder="Contoh: TK Maju Bersama"
+                className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-white px-4 text-sm font-semibold outline-none focus:border-[#2f7d68]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-black uppercase text-slate-400">
+                Kode Akses
+              </span>
+              <input
+                type="text"
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                placeholder="Kode untuk login sekolah"
+                className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-white px-4 text-sm font-semibold outline-none focus:border-[#2f7d68]"
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setFormStatus("");
+              }}
+              className="min-h-11 rounded-full bg-slate-50 px-5 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white disabled:opacity-60"
+            >
+              {isSaving ? "Menyimpan..." : "Simpan Sekolah"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {isLoading ? (
+        <p className="py-6 text-center text-sm font-semibold text-slate-500">
+          Memuat daftar sekolah...
+        </p>
+      ) : schools.length === 0 ? (
+        <p className="py-6 text-center text-sm font-semibold text-slate-500">
+          Belum ada sekolah terdaftar.
+        </p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {schools.map((school) => (
+            <div
+              key={school.id}
+              className="rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] p-4"
+            >
+              <p className="font-black text-slate-950">{school.name}</p>
+              <p className="mt-1 text-xs font-bold text-slate-400">
+                ID: {school.id}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1389,7 +1564,6 @@ function ZonesView({
   formStatus,
   isFormOpen,
   isSaving,
-  isAdmin,
   onAddItem,
   onAddZone,
   onBack,
@@ -1419,7 +1593,6 @@ function ZonesView({
   formStatus: string;
   isFormOpen: boolean;
   isSaving: boolean;
-  isAdmin: boolean;
   onAddItem: () => void;
   onAddZone: () => void;
   onBack: () => void;
@@ -1455,14 +1628,12 @@ function ZonesView({
             </h2>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            {!isAdmin ? (
-              <button
-                onClick={onAddZone}
-                className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
-              >
-                Tambah Zona
-              </button>
-            ) : null}
+            <button
+              onClick={onAddZone}
+              className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
+            >
+              Tambah Zona
+            </button>
             <button
               onClick={() => onPrintZone()}
               className="min-h-11 rounded-full border border-[#d9eadf] bg-white px-5 py-2.5 text-sm font-black text-[#2f7d68] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
@@ -1483,7 +1654,6 @@ function ZonesView({
                 key={zone.id}
                 className={`relative flex min-h-[17rem] flex-col rounded-3xl border border-[#dbe9de] ${visual.theme} p-5 text-left shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-lg`}
               >
-                {!isAdmin ? (
                 <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
                   <button
                     type="button"
@@ -1502,7 +1672,6 @@ function ZonesView({
                     <TrashIcon />
                   </button>
                 </div>
-                ) : null}
                 <div className="flex justify-center">
                   <div
                     className={`grid h-20 w-20 place-items-center rounded-3xl ${visual.iconBg} text-2xl font-black shadow-sm ring-1 ring-white/70`}
@@ -1573,14 +1742,12 @@ function ZonesView({
           >
             Cetak Zona
           </button>
-          {!isAdmin ? (
           <button
             onClick={onAddItem}
             className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
           >
             Tambah Barang
           </button>
-          ) : null}
         </div>
       </div>
 
@@ -1668,8 +1835,6 @@ function ZonesView({
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-2">
-                          {!isAdmin ? (
-                          <>
                           <button
                             onClick={() => onEditItem(item)}
                             className="min-h-10 rounded-full bg-[#fff2f6] px-4 py-2 text-xs font-black text-[#9d3e67] ring-1 ring-[#f3d6e2]"
@@ -1682,8 +1847,6 @@ function ZonesView({
                           >
                             Hapus
                           </button>
-                          </>
-                          ) : null}
                         </div>
                       </td>
                     </tr>
