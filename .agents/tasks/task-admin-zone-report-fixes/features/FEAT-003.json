@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "fix",
   "description": "Full CRUD for school management, fix zone/item delete toast behavior, show access code instead of ID on school cards",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "STEP 1 - Update GET /api/schools to support include_codes=true query param that returns access_code field",
     "STEP 2 - Create /api/schools/[id]/route.ts with PUT (update name+access_code) and DELETE handlers",
@@ -28,5 +28,5 @@
     "Run: cd /projects/sandbox/inventaris-paud && pnpm lint"
   ],
   "blocked_reason": null,
-  "findings": null
+  "findings": "All three issues implemented. Build and lint pass. (1) GET /api/schools supports include_codes=true param, (2) New /api/schools/[id]/route.ts with PUT+DELETE, (3) confirmDeleteZone and confirmDeleteItem use separate try/catch blocks, (4) SchoolManagementSection shows access codes, supports inline edit and delete with confirmation."
 }
