@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "fix",
   "description": "Fix review issues: (1) School-scoped slug uniqueness, (2) Admin credential env var, (3) Limit condition logs for admin mode, (4) Disable write operations for admin mode",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "STEP 1 - Fix zoneSlugExists to accept schoolId parameter, add .eq('school_id', schoolId) or .is('school_id', null) filter, and use .limit(1) to prevent throw on multiple matches. Update createUniqueZoneSlug to accept schoolId. Update createInventoryZone to pass input.school_id.",
     "STEP 2 - Move admin credential to env var: read from process.env.ADMIN_ACCESS_CODE with fallback to 'admin'. Update .env.example.",
@@ -22,5 +22,5 @@
     "Run: cd /projects/sandbox/inventaris-paud && pnpm lint"
   ],
   "blocked_reason": null,
-  "findings": null
+  "findings": "All four review issues addressed. Build and lint pass cleanly."
 }
