@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Create the schools table migration, seed data, SchoolContext, school selection page, protected route logic, nav integration, and data isolation - the full Netflix-style school selector feature.",
+  "status": "pending",
+  "steps": [
+    "Step 1 - Database migration: Create `supabase/migrations/20260601_schools_table.sql` that creates a `schools` table with columns: id (uuid PK default gen_random_uuid()), name (text not null), access_code (text not null), created_at (timestamptz default now()). Seed with the 5 schools: 'TK Dewi Masyithoh 69 Keting' (code '69'), 'TK Dewi Masyithoh 59 Jombang' (code '59'), 'TK DARUTTAQWA Jombang' (code '01'), 'TK Dewi Masyithoh 15 Keting' (code '15'), 'TK Dharma Wanita 02 Padomasan' (code '02'). Also add school_id (uuid references schools.id) column to the items table and item_condition_logs table for data isolation. Add index on items(school_id).",
+    "Step 2 - API route for schools: Create `src/app/api/schools/route.ts` with GET (list all schools - name and id only, NOT access_code) and `src/app/api/schools/verify/route.ts` with POST that accepts {schoolId, accessCode} and verifies against the DB, returning {valid: true, school: {id, name}} or {valid: false}.",
+    "Step 3 - SchoolContext: Create `src/lib/school-context.tsx` as a React context provider. It should track selectedSchool ({id, name} or null), provide selectSchool(school), clearSchool(), and persist to localStorage under key 'inventaris-paud-school'. Export useSchool() hook. The provider should hydrate from localStorage on mount.",
+    "Step 4 - School selection page: Create `src/app/select-school/page.tsx` as a client component. Fetch schools from GET /api/schools. Display a Netflix-style card grid (large cards, mobile-first, 1-2 columns on mobile, up to 3 on desktop). Each card shows school name with a colorful icon/avatar. On card tap, show a modal asking 'Masukkan kode akses' with a numeric input. On submit, POST to /api/schools/verify. On success, call selectSchool() from context and redirect to /. On failure, show error message 'Kode akses salah'. Design: rounded cards, large touch targets (min 48px), friendly colors, Indonesian text throughout.",
+    "Step 5 - Protected route wrapper: Create `src/components/SchoolGuard.tsx` that wraps app content. If no school is selected in context, redirect to /select-school. Use this in the main page layout. Also update `src/app/layout.tsx` to wrap children with SchoolProvider.",
+    "Step 6 - Update main page (src/app/page.tsx): Add a top navigation badge showing the selected school name. Add a 'Ganti Sekolah' button that calls clearSchool() and navigates to /select-school. Integrate with SchoolContext using useSchool() hook.",
+    "Step 7 - Data isolation in API routes: Update `src/app/api/items/route.ts` GET and POST to accept optional school_id query param/body field. Update `src/lib/inventory-store.ts` listInventory() to accept optional schoolId filter and apply .eq('school_id', schoolId) when provided. Update createInventoryItem to accept and store school_id. Update the client-side api-client.ts fetchInventory() to pass school_id. Update the main page.tsx to pass selectedSchool.id when fetching/creating items.",
+    "Step 8 - PDF reports school integration: Update `src/app/api/reports/route.ts` to accept school_id query param, filter items by school, and include the school name in the report title. Update `src/lib/reporting.ts` createInventoryReport to accept optional schoolName and include it in the HTML header."
+  ],
+  "acceptance_criteria": [
+    "SQL migration file exists at supabase/migrations/20260601_schools_table.sql with correct schema and seed data",
+    "GET /api/schools returns array of 5 schools with id and name (no access_code exposed)",
+    "POST /api/schools/verify correctly validates access codes against DB",
+    "SchoolContext persists selected school to localStorage and hydrates on mount",
+    "School selection page at /select-school renders card grid with all 5 schools",
+    "Access code modal appears on card click and validates code via API",
+    "SchoolGuard redirects to /select-school when no school selected",
+    "Main page shows selected school name badge and Ganti Sekolah button",
+    "API routes filter items by school_id when provided",
+    "PDF reports include school name in title when school_id is specified",
+    "`pnpm build` succeeds with all new files"
+  ],
+  "verification": [
+    "pnpm lint",
+    "pnpm build"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

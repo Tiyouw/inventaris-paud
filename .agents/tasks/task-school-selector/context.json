@@ -1,0 +1,33 @@
+{
+  "project_type": "Next.js 16 monolithic app with Supabase PostgreSQL backend",
+  "language": "TypeScript",
+  "build_system": "pnpm with Next.js built-in build (no Makefile). Uses `pnpm build` for production builds, `pnpm lint` for linting.",
+  "test_framework": "No test framework configured yet. No test files exist.",
+  "build_command": "pnpm build",
+  "test_command": "pnpm lint",
+  "verification_instructions": "1. Run `pnpm install` to ensure deps. 2. Run `pnpm lint` for lint checks. 3. Run `pnpm build` to confirm TypeScript compilation and Next.js build succeeds.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "1. cd /projects/sandbox/inventaris-paud. 2. pnpm install. 3. cp .env.example .env.local (fill Supabase values). 4. pnpm dev to start.",
+  "environment_constraints": "OPEN_INTERNET network mode - full access. Node.js v22 with pnpm available. No Docker needed. No test framework exists yet.",
+  "contribution_requirements": "Indonesian language for all UI text. Mobile-first design with large touch targets. Tailwind CSS 4 for styling. TypeScript strict mode. @/ path alias for src/.",
+  "key_patterns": "Single page.tsx monolith with all state/UI in one file. Server-side Supabase via getSupabaseServerClient() in API routes. Client-side API calls via src/lib/api-client.ts. inventory-store.ts is the server-side data layer. Zones are identified by slug. Items reference zone_id (UUID) in DB but use slug as zoneId in app. No routing beyond / and /api/* currently.",
+  "relevant_files": [
+    "src/app/layout.tsx",
+    "src/app/page.tsx",
+    "src/lib/supabase.ts",
+    "src/lib/inventory-store.ts",
+    "src/lib/api-client.ts",
+    "src/lib/inventory.ts",
+    "src/lib/reporting.ts",
+    "src/app/api/items/route.ts",
+    "src/app/api/items/[id]/route.ts",
+    "src/app/api/zones/route.ts",
+    "src/app/api/reports/route.ts",
+    "supabase/schema.sql",
+    "supabase/migrations/20260523_inventory_reference_columns.sql",
+    ".env.example",
+    "package.json",
+    "src/app/globals.css"
+  ],
+  "directory_structure": "src/app/ - Next.js app router pages and API routes. src/lib/ - shared utilities (supabase client, inventory types/store, api-client, media, reporting). supabase/ - schema.sql and migrations/. public/ - static assets. docs/ - project documentation."
+}
