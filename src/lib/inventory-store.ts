@@ -126,13 +126,9 @@ export async function listInventory(schoolId?: string): Promise<InventoryPayload
     itemsQuery = itemsQuery.eq("school_id", schoolId);
   }
 
-  const [zonesResult, itemsResult, logsResult] = await Promise.all([
+  const [zonesResult, itemsResult] = await Promise.all([
     supabase.from("zones").select("id, name, slug, description").order("name"),
     itemsQuery,
-    supabase
-      .from("item_condition_logs")
-      .select("id, item_id, new_condition_id, notes, checked_by, checked_at")
-      .order("checked_at", { ascending: false }),
   ]);
 
   if (zonesResult.error) {
@@ -143,10 +139,6 @@ export async function listInventory(schoolId?: string): Promise<InventoryPayload
     throw itemsResult.error;
   }
 
-  if (logsResult.error) {
-    throw logsResult.error;
-  }
-
   const zones = mapZones((zonesResult.data ?? []) as DbZoneRow[]);
   const zoneSlugById = new Map(
     ((zonesResult.data ?? []) as DbZoneRow[]).map((zone) => [zone.id, zone.slug]),
@@ -155,6 +147,24 @@ export async function listInventory(schoolId?: string): Promise<InventoryPayload
     mapInventoryItem(item, zoneSlugById),
   );
   const activeItemIds = new Set(items.map((item) => item.id));
+
+  let logsQuery = supabase
+    .from("item_condition_logs")
+    .select("id, item_id, new_condition_id, notes, checked_by, checked_at")
+    .order("checked_at", { ascending: false });
+
+  if (schoolId && activeItemIds.size > 0) {
+    logsQuery = logsQuery.in("item_id", [...activeItemIds]);
+  } else if (schoolId && activeItemIds.size === 0) {
+    return { items, conditionLogs: [], zones, source: "supabase" };
+  }
+
+  const logsResult = await logsQuery;
+
+  if (logsResult.error) {
+    throw logsResult.error;
+  }
+
   const conditionLogs = ((logsResult.data ?? []) as DbConditionLogRow[])
     .filter((log) => activeItemIds.has(log.item_id))
     .map(mapConditionLog);
@@ -211,6 +221,7 @@ export async function createInventoryItem(
 export async function updateInventoryItem(
   itemId: string,
   input: SaveInventoryItemInput,
+  schoolId?: string,
 ): Promise<InventoryItem> {
   validateInventoryInput(input);
 
@@ -219,10 +230,16 @@ export async function updateInventoryItem(
   const existing = await getItemById(supabase, itemId);
   const nextCheckedAt = toTimestamp(input.lastCheckedAt) ?? new Date().toISOString();
 
-  const { data: updatedItem, error: updateError } = await supabase
+  let updateQuery = supabase
     .from("items")
     .update(toDbItemUpdate(input, zone.id, nextCheckedAt))
-    .eq("id", itemId)
+    .eq("id", itemId);
+
+  if (schoolId) {
+    updateQuery = updateQuery.eq("school_id", schoolId);
+  }
+
+  const { data: updatedItem, error: updateError } = await updateQuery
     .select(
       "id, zone_id, asset_tag, name, type_id, condition_id, status, quantity, minimum_quantity, acquisition_date, source_id, location_detail, owner, primary_photo_url, notes, last_checked_at, is_active, zones(slug)",
     )
@@ -256,9 +273,10 @@ export async function updateInventoryItem(
   return item;
 }
 
-export async function softDeleteInventoryItem(itemId: string): Promise<void> {
+export async function softDeleteInventoryItem(itemId: string, schoolId?: string): Promise<void> {
   const supabase = requireSupabaseClient();
-  const { error } = await supabase
+
+  let deleteQuery = supabase
     .from("items")
     .update({
       is_active: false,
@@ -266,6 +284,12 @@ export async function softDeleteInventoryItem(itemId: string): Promise<void> {
       deleted_reason: "Soft deleted from inventory app.",
     })
     .eq("id", itemId);
+
+  if (schoolId) {
+    deleteQuery = deleteQuery.eq("school_id", schoolId);
+  }
+
+  const { error } = await deleteQuery;
 
   if (error) {
     throw error;
