@@ -1,0 +1,7 @@
+{
+  "task_id": "task-school-selector",
+  "task_description": "Implement Netflix-style School Selector with Access Codes for the inventaris-paud app. This adds multi-school isolation so 5 kindergartens can each access their own inventory data with simple access codes.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

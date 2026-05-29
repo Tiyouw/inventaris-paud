@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Nunito } from "next/font/google";
 import "./globals.css";
+import { SchoolProvider } from "@/lib/school-context";
 
 const nunito = Nunito({
   variable: "--font-nunito",
@@ -31,7 +32,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
+        <SchoolProvider>{children}</SchoolProvider>
       </body>
     </html>
   );

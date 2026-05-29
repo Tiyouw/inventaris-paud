@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   CONDITION_LOGS,
   CONDITION_TYPES,
@@ -35,6 +36,8 @@ import {
   type SaveInventoryZoneInput,
 } from "@/lib/api-client";
 import { compressImageToWebp, validateSourceImage } from "@/lib/media";
+import { useSchool } from "@/lib/school-context";
+import { SchoolGuard } from "@/components/SchoolGuard";
 
 type AppTab = "dashboard" | "zones";
 
@@ -296,6 +299,8 @@ function createLocalZoneId(name: string, zones: InventoryZone[]): string {
 }
 
 export default function Home() {
+  const { selectedSchool, clearSchool } = useSchool();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AppTab>("dashboard");
   const [selectedZoneId, setSelectedZoneId] = useState<InventoryZoneId | null>(
     null,
@@ -335,7 +340,7 @@ export default function Home() {
   useEffect(() => {
     let isMounted = true;
 
-    fetchInventory()
+    fetchInventory(selectedSchool?.id)
       .then((payload) => {
         if (!isMounted) {
           return;
@@ -379,7 +384,7 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedSchool?.id]);
 
   useEffect(() => {
     if (!toast) {
@@ -441,7 +446,11 @@ export default function Home() {
   }
 
   function openReport(zoneId?: InventoryZoneId) {
-    const path = zoneId ? `/api/reports?zoneId=${zoneId}` : "/api/reports";
+    const params = new URLSearchParams();
+    if (zoneId) params.set("zoneId", zoneId);
+    if (selectedSchool?.id) params.set("school_id", selectedSchool.id);
+    const qs = params.toString();
+    const path = qs ? `/api/reports?${qs}` : "/api/reports";
     window.open(path, "_blank", "noopener,noreferrer");
   }
 
@@ -450,7 +459,7 @@ export default function Home() {
   }
 
   async function refreshInventoryFromApi(successMessage: string) {
-    const payload = await fetchInventory();
+    const payload = await fetchInventory(selectedSchool?.id);
 
     if (payload.source === "supabase" || payload.items.length > 0) {
       setItems(payload.items);
@@ -520,6 +529,7 @@ export default function Home() {
       notes: form.notes.trim() || undefined,
       photoUrl: form.photoUrl,
       isActive: true,
+      school_id: selectedSchool?.id,
     };
 
     if (dataSource === "supabase") {
@@ -867,6 +877,7 @@ export default function Home() {
   }
 
   return (
+    <SchoolGuard>
     <main className="min-h-dvh bg-[var(--background)] pb-28 text-slate-900">
       <header className="sticky top-0 z-20 border-b border-[#ddebdc] bg-white/90 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
@@ -884,6 +895,25 @@ export default function Home() {
                 </h1>
               </div>
             </div>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            {selectedSchool ? (
+              <>
+                <span className="hidden rounded-full bg-[#edf7f1] px-3 py-1.5 text-xs font-black text-[#2f7d68] ring-1 ring-[#dbe9de] sm:inline-flex">
+                  {selectedSchool.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSchool();
+                    router.push("/select-school");
+                  }}
+                  className="min-h-10 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50"
+                >
+                  Ganti Sekolah
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </header>
@@ -993,6 +1023,7 @@ export default function Home() {
         />
       ) : null}
     </main>
+    </SchoolGuard>
   );
 }
 

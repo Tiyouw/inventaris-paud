@@ -11,6 +11,7 @@ export type InventoryPayload = {
 export type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
   id?: string;
   isActive?: boolean;
+  school_id?: string;
 };
 
 export type SaveInventoryZoneInput = {
@@ -23,8 +24,9 @@ type ApiErrorPayload = {
   message?: string;
 };
 
-export async function fetchInventory(): Promise<InventoryPayload> {
-  const response = await fetch("/api/items", {
+export async function fetchInventory(schoolId?: string): Promise<InventoryPayload> {
+  const url = schoolId ? `/api/items?school_id=${schoolId}` : "/api/items";
+  const response = await fetch(url, {
     cache: "no-store",
   });
 

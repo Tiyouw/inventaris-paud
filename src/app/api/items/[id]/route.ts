@@ -13,7 +13,9 @@ type RouteContext = {
 export async function PUT(request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const item = await updateInventoryItem(id, await request.json());
+    const body = await request.json();
+    const schoolId = body.school_id as string | undefined;
+    const item = await updateInventoryItem(id, body, schoolId);
 
     return NextResponse.json({ item });
   } catch (error) {
@@ -21,10 +23,12 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
-    await softDeleteInventoryItem(id);
+    const url = new URL(request.url);
+    const schoolId = url.searchParams.get("school_id") ?? undefined;
+    await softDeleteInventoryItem(id, schoolId);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

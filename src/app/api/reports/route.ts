@@ -15,17 +15,21 @@ import {
   createInventoryReport,
   createInventoryReportHtml,
 } from "@/lib/reporting";
+import { getSupabaseServerClient } from "@/lib/supabase";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const zoneId = url.searchParams.get("zoneId") as InventoryZoneId | null;
+  const schoolId = url.searchParams.get("school_id") ?? undefined;
 
   try {
-    const payload = await listInventory();
+    const payload = await listInventory(schoolId);
     const items = filterItems(payload.items, zoneId);
+    const schoolName = schoolId ? await getSchoolName(schoolId) : undefined;
     const report = createInventoryReport(items, {
-      title: createReportTitle(zoneId, payload.zones),
+      title: createReportTitle(zoneId, payload.zones, schoolName),
       zones: payload.zones,
+      schoolName,
     });
 
     return createHtmlResponse(createInventoryReportHtml(report));
@@ -51,6 +55,22 @@ export async function GET(request: Request) {
   }
 }
 
+async function getSchoolName(schoolId: string): Promise<string | undefined> {
+  const supabase = getSupabaseServerClient();
+
+  if (!supabase) {
+    return undefined;
+  }
+
+  const { data } = await supabase
+    .from("schools")
+    .select("name")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  return data?.name ?? undefined;
+}
+
 function filterItems(
   items: InventoryItem[],
   zoneId: InventoryZoneId | null,
@@ -65,12 +85,14 @@ function filterItems(
 function createReportTitle(
   zoneId: InventoryZoneId | null,
   zones: InventoryZone[],
+  schoolName?: string,
 ): string {
   const zone = zoneId ? zones.find((entry) => entry.id === zoneId) : null;
+  const schoolPrefix = schoolName ? `${schoolName} - ` : "";
 
   return zoneId
-    ? `Laporan Inventaris Zona ${zone?.name ?? zoneId}`
-    : "Laporan Inventaris Makerspace";
+    ? `${schoolPrefix}Laporan Inventaris Zona ${zone?.name ?? zoneId}`
+    : `${schoolPrefix}Laporan Inventaris Makerspace`;
 }
 
 function createHtmlResponse(html: string): Response {
