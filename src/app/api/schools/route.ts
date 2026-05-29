@@ -10,11 +10,13 @@ const HARDCODED_SCHOOLS = [
   { id: "school-5", name: "TK Dharma Wanita 02 Padomasan" },
 ];
 
+const ADMIN_ENTRY = { id: "admin", name: "Admin" };
+
 export async function GET() {
   const supabase = getSupabaseServerClient();
 
   if (!supabase) {
-    return NextResponse.json({ schools: HARDCODED_SCHOOLS });
+    return NextResponse.json({ schools: [...HARDCODED_SCHOOLS, ADMIN_ENTRY] });
   }
 
   const { data, error } = await supabase
@@ -23,8 +25,8 @@ export async function GET() {
     .order("name");
 
   if (error) {
-    return NextResponse.json({ schools: HARDCODED_SCHOOLS });
+    return NextResponse.json({ schools: [...HARDCODED_SCHOOLS, ADMIN_ENTRY] });
   }
 
-  return NextResponse.json({ schools: data ?? HARDCODED_SCHOOLS });
+  return NextResponse.json({ schools: [...(data ?? HARDCODED_SCHOOLS), ADMIN_ENTRY] });
 }

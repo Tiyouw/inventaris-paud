@@ -36,6 +36,7 @@ type SaveInventoryItemInput = Omit<InventoryItem, "id" | "isActive"> & {
 export type SaveInventoryZoneInput = {
   name: string;
   description?: string;
+  school_id?: string;
 };
 
 type UploadInventoryPhotoInput = {
@@ -127,7 +128,13 @@ export async function listInventory(schoolId?: string): Promise<InventoryPayload
   }
 
   const [zonesResult, itemsResult] = await Promise.all([
-    supabase.from("zones").select("id, name, slug, description").order("name"),
+    (() => {
+      let zonesQuery = supabase.from("zones").select("id, name, slug, description").order("name");
+      if (schoolId) {
+        zonesQuery = zonesQuery.eq("school_id", schoolId);
+      }
+      return zonesQuery;
+    })(),
     itemsQuery,
   ]);
 
@@ -309,6 +316,7 @@ export async function createInventoryZone(
       name,
       slug,
       description: input.description?.trim() || null,
+      school_id: input.school_id || null,
     })
     .select("id, name, slug, description")
     .single();

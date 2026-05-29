@@ -17,6 +17,7 @@ export type School = {
 type SchoolContextValue = {
   selectedSchool: School | null;
   isHydrated: boolean;
+  isAdmin: boolean;
   selectSchool: (school: School) => void;
   clearSchool: () => void;
 };
@@ -106,6 +107,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     () => ({
       selectedSchool: storedSchool,
       isHydrated: true,
+      isAdmin: storedSchool?.id === "admin",
       selectSchool,
       clearSchool,
     }),

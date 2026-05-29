@@ -113,7 +113,7 @@ export default function SelectSchoolPage() {
 
       <section className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {schools.map((school, index) => {
+          {schools.filter((s) => s.id !== "admin").map((school, index) => {
             const colors = PASTEL_COLORS[index % PASTEL_COLORS.length];
 
             return (
@@ -139,6 +139,27 @@ export default function SelectSchoolPage() {
             );
           })}
         </div>
+
+        {schools.some((s) => s.id === "admin") ? (
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedForVerify({ id: "admin", name: "Admin" });
+                setAccessCode("");
+                setError("");
+              }}
+              className="flex min-h-[12rem] w-full max-w-xs flex-col items-center justify-center rounded-3xl border border-[#d4d0e8] bg-[#f3f1fc] p-6 text-center shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-lg active:translate-y-0"
+            >
+              <div className="grid h-16 w-16 place-items-center rounded-full bg-[#e0dcf5] text-xl font-black text-[#514ba5] shadow-sm">
+                ADM
+              </div>
+              <p className="mt-4 text-base font-black leading-snug text-[#514ba5]">
+                Kelola Sekolah
+              </p>
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {selectedForVerify ? (

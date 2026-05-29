@@ -79,6 +79,7 @@ export type InventoryReport = {
   summary: InventoryReportSummary;
   photoAppendix: InventoryPhotoAppendixEntry[];
   schoolName?: string;
+  isSingleZone?: boolean;
 };
 
 export type InventoryReportOptions = {
@@ -87,6 +88,7 @@ export type InventoryReportOptions = {
   includeInactive?: boolean;
   zones?: InventoryZone[];
   schoolName?: string;
+  isSingleZone?: boolean;
 };
 
 const CONDITION_LABELS: Record<ConditionTypeId, string> = {
@@ -136,6 +138,7 @@ export function createInventoryReport(
     summary: summarizeInventoryForReport(reportItems, zones),
     photoAppendix: createPhotoAppendixData(reportItems, zones),
     schoolName: options.schoolName,
+    isSingleZone: options.isSingleZone,
   };
 }
 
@@ -368,7 +371,7 @@ export function createInventoryReportHtml(report: InventoryReport): string {
           ${createMetricHtml("Perlu Perhatian", report.summary.needsAttentionItems)}
         </div>
         <div class="breakdown">
-          ${createCountTableHtml("Per Zona", report.summary.byZone)}
+          ${report.isSingleZone ? createCountTableHtml("Per Jenis", report.summary.byType) : createCountTableHtml("Per Zona", report.summary.byZone)}
           ${createCountTableHtml("Per Kondisi", report.summary.byCondition)}
           ${createCountTableHtml("Per Asal Barang", report.summary.bySource)}
         </div>
