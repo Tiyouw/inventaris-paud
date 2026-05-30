@@ -439,6 +439,7 @@ export default function Home() {
     setForm({
       ...createEmptyForm(zoneId),
       assetTag: createSuggestedAssetTag(zoneId, activeItems),
+      location: selectedSchool?.name ?? "",
     });
     setPhotoStatus("");
     setFormStatus("");
@@ -957,6 +958,10 @@ export default function Home() {
           onCancelForm={() => {
             setIsFormOpen(false);
             setFormStatus("");
+            setPhotoStatus("");
+          }}
+          onClearPhoto={() => {
+            setForm((current) => ({ ...current, photoUrl: undefined }));
             setPhotoStatus("");
           }}
           onDeleteItem={requestDeleteItem}
@@ -1758,6 +1763,7 @@ function ZonesView({
   onAddZone,
   onBack,
   onCancelForm,
+  onClearPhoto,
   onDeleteItem,
   onDeleteZone,
   onEditItem,
@@ -1787,6 +1793,7 @@ function ZonesView({
   onAddZone: () => void;
   onBack: () => void;
   onCancelForm: () => void;
+  onClearPhoto: () => void;
   onDeleteItem: (itemId: string) => void;
   onDeleteZone: (zone: InventoryZone) => void;
   onEditItem: (item: InventoryItem) => void;
@@ -2068,6 +2075,7 @@ function ZonesView({
               formStatus={formStatus}
               onChange={setForm}
               onCancel={onCancelForm}
+              onClearPhoto={onClearPhoto}
               onPhotoChange={onPhotoChange}
               onSubmit={onSubmit}
               photoStatus={photoStatus}
@@ -2129,6 +2137,7 @@ function ItemForm({
   formStatus,
   onCancel,
   onChange,
+  onClearPhoto,
   onPhotoChange,
   onSubmit,
   photoStatus,
@@ -2139,6 +2148,7 @@ function ItemForm({
   formStatus: string;
   onCancel: () => void;
   onChange: React.Dispatch<React.SetStateAction<ItemFormState>>;
+  onClearPhoto: () => void;
   onPhotoChange: (file?: File) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   photoStatus: string;
@@ -2313,6 +2323,15 @@ function ItemForm({
           />
           {photoStatus ? (
             <p className="mt-2 text-xs font-bold text-[#2f7d68]">{photoStatus}</p>
+          ) : null}
+          {form.photoUrl ? (
+            <button
+              type="button"
+              onClick={onClearPhoto}
+              className="mt-2 rounded-full bg-red-50 px-3 py-1.5 text-xs font-black text-red-600 ring-1 ring-red-200 transition hover:bg-red-100"
+            >
+              Hapus Foto
+            </button>
           ) : null}
         </label>
       </div>
