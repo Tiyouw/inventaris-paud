@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -58,7 +58,7 @@ import {
   openObservationReport,
 } from "@/lib/api-client";
 
-type AppTab = "dashboard" | "zones";
+type AppTab = "dashboard" | "zones" | "observasi";
 
 type ItemFormState = {
   id?: string;
@@ -355,6 +355,9 @@ export default function Home() {
   const [form, setForm] = useState<ItemFormState>(
     createEmptyForm("mini-garden"),
   );
+  const [schoolCode] = useState<string>(() =>
+    typeof window !== 'undefined' ? sessionStorage.getItem('school_code') ?? '' : ''
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -473,6 +476,8 @@ export default function Home() {
     const path = qs ? `/api/reports?${qs}` : "/api/reports";
     window.open(path, "_blank", "noopener,noreferrer");
   }
+
+  function openObservasi() { setActiveTab('observasi'); }
 
   function showToast(message: string, tone: ToastState["tone"] = "success") {
     setToast({ id: Date.now(), message, tone });
@@ -961,8 +966,9 @@ export default function Home() {
           zones={zones}
           onOpenZone={openZone}
           isAdmin={isAdmin}
+          onStartObservasi={openObservasi}
         />
-      ) : (
+      ) : activeTab === "zones" ? (
         <ZonesView
           zones={zones}
           conditionFilter={conditionFilter}
@@ -1005,9 +1011,11 @@ export default function Home() {
           zoneItems={zoneItems}
           activeItems={activeItems}
         />
+      ) : (
+        <ObservasiView schoolCode={schoolCode} />
       )}
 
-      <nav className="fixed inset-x-4 bottom-4 z-30 mx-auto grid max-w-md grid-cols-2 gap-2 rounded-3xl border border-[#d9eadf] bg-white/95 p-2 shadow-2xl backdrop-blur">
+      <nav className="fixed inset-x-4 bottom-4 z-30 mx-auto grid max-w-md grid-cols-3 gap-2 rounded-3xl border border-[#d9eadf] bg-white/95 p-2 shadow-2xl backdrop-blur">
         <TabButton
           active={activeTab === "dashboard"}
           label="Dasbor"
@@ -1020,6 +1028,12 @@ export default function Home() {
           active={activeTab === "zones"}
           label="Zona"
           onClick={() => setActiveTab("zones")}
+        />
+        <TabButton
+          active={activeTab === "observasi"}
+          label="Observasi"
+          onClick={() => setActiveTab("observasi")}
+          badge="BARU"
         />
       </nav>
 
@@ -1067,6 +1081,42 @@ export default function Home() {
   );
 }
 
+function ObservasiDashboardCard({ onStartObservasi }: { onStartObservasi: () => void }) {
+  return (
+    <div
+      onClick={onStartObservasi}
+      className="relative cursor-pointer overflow-hidden rounded-3xl border border-[#c5e8d0] p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:shadow-lg"
+      style={{ background: 'linear-gradient(135deg, #edf7f4 0%, #f1f0ff 100%)' }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="mb-2 text-3xl">🔬</div>
+          <h2 className="text-lg font-black text-slate-950">Form Observasi Eksperimen</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+            Isi penilaian perkembangan anak untuk kegiatan VFT &amp; STEAM EduGreen.
+            Skor dihitung otomatis dan rekap kelas bisa langsung dicetak.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {OBSERVATION_THEMES.map((t) => (
+              <span key={t.id} className="rounded-full border border-[#dbe9de] bg-white px-3 py-1 text-xs font-bold text-[#2f7d68]">
+                {t.emoji} {t.name.replace('Eksperimen ', '')}
+              </span>
+            ))}
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#f1f0ff] px-3 py-1 text-xs font-black text-[#514ba5]">5 Tema</span>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onStartObservasi(); }}
+        className="mt-4 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0"
+      >
+        Mulai Observasi →
+      </button>
+    </div>
+  );
+}
+
 function DashboardView({
   activeItems,
   stats,
@@ -1074,6 +1124,7 @@ function DashboardView({
   zones,
   onOpenZone,
   isAdmin,
+  onStartObservasi,
 }: {
   activeItems: InventoryItem[];
   stats: ReturnType<typeof getDashboardStats>;
@@ -1081,6 +1132,7 @@ function DashboardView({
   zones: InventoryZone[];
   onOpenZone: (zoneId: InventoryZoneId) => void;
   isAdmin: boolean;
+  onStartObservasi: () => void;
 }) {
   return (
     <section className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
@@ -1110,6 +1162,8 @@ function DashboardView({
         <MetricCard label="Tersedia" tone="mint" value={`${stats.availableRate}%`} />
         <MetricCard label="Perlu Cek" tone="rose" value={stats.repairQueueCount + stats.missingCount} />
       </div>
+
+      <ObservasiDashboardCard onStartObservasi={onStartObservasi} />
 
       <section className="rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
         <div className="mb-4">
@@ -1516,6 +1570,272 @@ function SchoolManagementSection() {
         </div>
       )}
     </section>
+  );
+}
+
+function ObservasiView({ schoolCode }: { schoolCode: string }) {
+  const [step, setStep] = useState<'list' | 'step1' | 'step2' | 'step3'>('list');
+  const [wizard, setWizard] = useState(createEmptyWizard());
+  const [activeChildIndex, setActiveChildIndex] = useState(0);
+  const [sessions, setSessions] = useState<ObservationSession[]>([]);
+  const [savedSession, setSavedSession] = useState<ObservationSession | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchObservationSessions().then(setSessions).catch(() => setSessions([])).finally(() => setIsLoading(false));
+  }, []);
+
+  function goToStep1() {
+    setWizard(createEmptyWizard());
+    setActiveChildIndex(0);
+    setSavedSession(null);
+    setSaveError('');
+    setStep('step1');
+  }
+
+  function goToStep2() {
+    if (!wizard.themeId) { setSaveError('Pilih tema eksperimen.'); return; }
+    if (!wizard.sessionDate) { setSaveError('Pilih tanggal sesi.'); return; }
+    const valid = wizard.children.filter((c) => c.name.trim().length > 0);
+    if (valid.length === 0) { setSaveError('Tambahkan minimal 1 anak.'); return; }
+    setSaveError('');
+    setWizard((prev) => ({ ...prev, children: valid }));
+    setActiveChildIndex(0);
+    setStep('step2');
+  }
+
+  function setChildScore(childIdx: number, indicatorIdx: number, score: number) {
+    setWizard((prev) => {
+      const children = prev.children.map((child, i) => {
+        if (i !== childIdx) return child;
+        const scores = [...child.scores] as ChildScores;
+        scores[indicatorIdx] = score as ChildScores[number];
+        return { ...child, scores };
+      });
+      return { ...prev, children };
+    });
+  }
+
+  async function goToStep3() {
+    const allFilled = wizard.children.every((c) => areAllScoresFilled(c.scores));
+    if (!allFilled) { setSaveError('Semua skor harus diisi untuk setiap anak.'); return; }
+    setSaveError('');
+    setIsSaving(true);
+    try {
+      const session = await saveObservationSession({
+        themeId: wizard.themeId as ObservationThemeId,
+        sessionDate: wizard.sessionDate,
+        children: wizard.children.map((c) => ({ name: c.name.trim(), scores: c.scores })),
+      });
+      setSavedSession(session);
+      setSessions((prev) => [session, ...prev]);
+      setStep('step3');
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Gagal menyimpan sesi observasi.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function goBackToList() {
+    setStep('list');
+    setSavedSession(null);
+    setSaveError('');
+  }
+
+  const currentTheme = wizard.themeId ? OBSERVATION_THEMES.find((t) => t.id === wizard.themeId) : null;
+
+  return (
+    <section className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+      {step === 'list' ? (
+        <>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="inline-flex rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] ring-1 ring-[#dbe9de]">
+                Observasi Eksperimen
+              </p>
+              <h2 className="mt-3 text-3xl font-black text-slate-950">
+                {schoolCode ? 'Sesi Observasi' : 'Pilih sekolah terlebih dahulu.'}
+              </h2>
+            </div>
+            {schoolCode ? (
+              <button onClick={goToStep1} className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0">
+                + Sesi Baru
+              </button>
+            ) : null}
+          </div>
+
+          {isLoading ? (
+            <p className="text-sm font-bold text-slate-500">Memuat sesi tersimpan...</p>
+          ) : sessions.length === 0 ? (
+            <div className="rounded-3xl border border-[#dbe9de] bg-white p-8 text-center">
+              <p className="text-4xl">🔬</p>
+              <p className="mt-3 text-lg font-black text-slate-950">Belum ada sesi observasi</p>
+              <p className="mt-2 text-sm font-semibold text-slate-500">Klik &quot;+ Sesi Baru&quot; untuk memulai.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {sessions.map((s) => {
+                const theme = OBSERVATION_THEMES.find((t) => t.id === s.themeId);
+                return (
+                  <div key={s.id} className="flex items-center justify-between rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
+                    <div>
+                      <p className="font-black text-slate-950">{theme?.emoji} {theme?.name ?? s.themeId}</p>
+                      <p className="text-sm font-semibold text-slate-500">{s.sessionDate} &middot; {s.records.length} anak</p>
+                    </div>
+                    <button onClick={() => openObservationReport(s.id)} className="rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68]">
+                      Cetak
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mx-auto max-w-3xl">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={goBackToList} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-[#dbe9de]">Kembali</button>
+            <ObsStepIndicator current={step === 'step1' ? 1 : step === 'step2' ? 2 : 3} />
+          </div>
+          {saveError ? (
+            <p className="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{saveError}</p>
+          ) : null}
+
+          {step === 'step1' && (
+            <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)] space-y-4">
+              <h3 className="text-xl font-black text-slate-950">Setup Sesi Observasi</h3>
+              <label className="block">
+                <span className="text-xs font-black uppercase text-slate-400">Tema Eksperimen</span>
+                <select value={wizard.themeId} onChange={(e) => setWizard((p) => ({ ...p, themeId: e.target.value as ObservationThemeId | '' }))} className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]">
+                  <option value="">Pilih tema...</option>
+                  {OBSERVATION_THEMES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-black uppercase text-slate-400">Tanggal Sesi</span>
+                <input type="date" value={wizard.sessionDate} onChange={(e) => setWizard((p) => ({ ...p, sessionDate: e.target.value }))} className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]" />
+              </label>
+              <div>
+                <span className="text-xs font-black uppercase text-slate-400">Nama Anak</span>
+                {wizard.children.map((child, i) => (
+                  <div key={i} className="mt-2 flex gap-2">
+                    <input value={child.name} onChange={(e) => setWizard((p) => {
+                      const children = p.children.map((c, j) => j === i ? { ...c, name: e.target.value } : c);
+                      return { ...p, children };
+                    })} placeholder="Nama anak" className="h-12 flex-1 rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]" />
+                    {wizard.children.length > 1 ? (
+                      <button onClick={() => setWizard((p) => ({ ...p, children: p.children.filter((_, j) => j !== i), activeChildIndex: 0 }))} className="rounded-full bg-red-50 px-3 text-sm font-black text-red-600">Hapus</button>
+                    ) : null}
+                  </div>
+                ))}
+                <button onClick={() => setWizard((p) => ({ ...p, children: [...p.children, createEmptyChild('')] }))} className="mt-2 rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68]">+ Tambah Anak</button>
+              </div>
+              <button onClick={goToStep2} className="min-h-12 w-full rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white">Lanjut Isi Skor →</button>
+            </div>
+          )}
+
+          {step === 'step2' && wizard.children[activeChildIndex] && (
+            <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-2 mb-4">
+                {wizard.children.map((child, i) => (
+                  <button key={i} onClick={() => { setActiveChildIndex(i); setSaveError(''); }} className={`rounded-full px-4 py-2 text-sm font-black ${i === activeChildIndex ? 'bg-[#2f7d68] text-white' : 'bg-[#edf7f1] text-[#2f7d68]'}`}>{child.name || `Anak ${i + 1}`}</button>
+                ))}
+              </div>
+              <h3 className="text-lg font-black text-slate-950 mb-1">{currentTheme?.emoji} {currentTheme?.name}</h3>
+              <p className="text-sm font-semibold text-slate-500 mb-4">Skor: 1 (BB) – 4 (BSB)</p>
+              <div className="space-y-3">
+                {OBSERVATION_INDICATORS.map((indicator, idx) => {
+                  const score = wizard.children[activeChildIndex].scores[idx];
+                  return (
+                    <div key={idx} className="rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] p-4">
+                      <p className="text-sm font-bold text-slate-700 mb-2">{idx + 1}. {indicator}</p>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4].map((s) => (
+                          <button key={s} onClick={() => setChildScore(activeChildIndex, idx, s)} className={`h-9 w-9 rounded-full text-sm font-black ${score === s ? 'bg-[#2f7d68] text-white' : 'bg-white text-slate-600 ring-1 ring-[#dbe9de]'}`}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex justify-between">
+                <p className="text-sm font-bold text-slate-500">
+                  Rata-rata: {wizard.children[activeChildIndex] ? calculateAverageScore(wizard.children[activeChildIndex].scores).toFixed(2) : '0.00'}
+                </p>
+                {activeChildIndex < wizard.children.length - 1 ? (
+                  <button onClick={() => { setActiveChildIndex((prev) => prev + 1); setSaveError(''); }} className="rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white">Anak Selanjutnya →</button>
+                ) : (
+                  <button onClick={goToStep3} disabled={isSaving} className="rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white disabled:opacity-60">{isSaving ? 'Menyimpan...' : 'Simpan & Lihat Rekap →'}</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 'step3' && savedSession && (
+            <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)] space-y-4">
+              <h3 className="text-xl font-black text-slate-950">Rekap Observasi</h3>
+              <div className="flex gap-4 text-sm">
+                <div className="rounded-2xl bg-[#edf7f1] px-4 py-3"><span className="font-black">{currentTheme?.emoji} {currentTheme?.name}</span></div>
+                <div className="rounded-2xl bg-[#edf7f1] px-4 py-3"><span className="font-black">{savedSession.sessionDate}</span></div>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-[#f7fbf6] text-xs font-black uppercase text-slate-500">
+                      <th className="px-4 py-3">Anak</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Rata</th><th className="px-4 py-3">Kategori</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedSession.records.map((r) => (
+                      <tr key={r.id} className="border-b border-slate-100">
+                        <td className="px-4 py-4 font-black text-slate-950">{r.childName}</td>
+                        <td className="px-4 py-4 font-semibold">{r.totalScore}/48</td>
+                        <td className="px-4 py-4 font-semibold">{r.averageScore.toFixed(2)}</td>
+                        <td className="px-4 py-4"><span className="rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-black text-[#2f7d68]">{r.category} — {CATEGORY_LABELS[r.category]}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={() => openObservationReport(savedSession.id)} className="min-h-12 w-full rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white">
+                🖨️ Cetak / Unduh PDF
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ObsStepIndicator({ current }: { current: 1 | 2 | 3 }) {
+  const steps = ['Setup Sesi', 'Isi Skor', 'Rekap & Cetak'];
+  return (
+    <div className="flex items-center">
+      {steps.map((label, i) => {
+        const num = (i + 1) as 1 | 2 | 3;
+        const done = current > num;
+        const active = current === num;
+        return (
+          <Fragment key={i}>
+            <div className="flex flex-col items-center">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-black ${
+                done ? 'border-[#2f7d68] bg-[#2f7d68] text-white'
+                : active ? 'border-[#2f7d68] bg-[#edf7f1] text-[#2f7d68]'
+                : 'border-slate-200 bg-white text-slate-400'
+              }`}>{done ? '✓' : num}</div>
+              <p className={`mt-1 text-[10px] font-bold ${active || done ? 'text-[#2f7d68]' : 'text-slate-400'}`}>{label}</p>
+            </div>
+            {i < 2 && <div className={`mb-5 h-0.5 flex-1 mx-1 ${done ? 'bg-[#2f7d68]' : 'bg-slate-200'}`} />}
+          </Fragment>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2417,21 +2737,28 @@ function TabButton({
   active,
   label,
   onClick,
+  badge,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  badge?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`min-h-11 rounded-xl px-4 py-3 text-sm font-black transition ${
+      className={`relative min-h-11 rounded-xl px-4 py-3 text-sm font-black transition ${
         active
           ? "bg-[#2f7d68] text-white shadow-sm"
           : "text-slate-500 hover:bg-[#edf7f1] hover:text-slate-900"
       }`}
     >
       {label}
+      {badge ? (
+        <span className="absolute right-1.5 top-1.5 rounded-full bg-orange-500 px-1.5 py-0.5 text-[8px] font-black text-white leading-none">
+          {badge}
+        </span>
+      ) : null}
     </button>
   );
 }
