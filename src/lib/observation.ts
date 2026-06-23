@@ -91,6 +91,24 @@ export type ObservationSession = {
   sessionDate: string; createdAt: string; records: ObservationRecord[];
 };
 
+// ─── Shared auth helpers (server-side) ────────────────────────────────────────
+import { cookies } from 'next/headers';
+
+export async function getSchoolCodeFromCookie(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const val = cookieStore.get('school_session')?.value ?? null;
+  return val && OBSERVATION_SCHOOLS.some((s) => s.code === val) ? val : null;
+}
+
+// ─── HTML escaping ────────────────────────────────────────────────────────────
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ─── Wizard state (client-only) ───────────────────────────────────────────────
 export type WizardChild = { name: string; scores: ChildScores };
 export type WizardState = {

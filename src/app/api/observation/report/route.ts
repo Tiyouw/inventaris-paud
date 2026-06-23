@@ -1,39 +1,38 @@
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getObservationSession } from '@/lib/observation-store';
 import {
-  OBSERVATION_SCHOOLS, OBSERVATION_THEMES, CATEGORY_RANGES, CATEGORY_LABELS,
-  getSchoolByCode, getTtdUrl, type SchoolCode,
+  OBSERVATION_THEMES, CATEGORY_RANGES, CATEGORY_LABELS,
+  getSchoolByCode, getTtdUrl, getSchoolCodeFromCookie, escapeHtml,
 } from '@/lib/observation';
 
-async function getSchoolCode(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const val = cookieStore.get('school_session')?.value ?? null;
-  return val && OBSERVATION_SCHOOLS.some((s) => s.code === val) ? val : null;
-}
-
 export async function GET(request: Request) {
-  const schoolCode = await getSchoolCode();
-  if (!schoolCode) return new NextResponse('Unauthorized', { status: 401 });
+  const schoolCode = await getSchoolCodeFromCookie();
+  if (!schoolCode) {
+    return new NextResponse('Tidak ada sesi sekolah. Silakan login ulang.', { status: 401 });
+  }
   const sessionId = new URL(request.url).searchParams.get('sessionId');
-  if (!sessionId) return new NextResponse('sessionId required', { status: 400 });
-  const session = await getObservationSession(sessionId, schoolCode).catch(() => null);
-  if (!session) return new NextResponse('Not found', { status: 404 });
+  if (!sessionId) {
+    return new NextResponse('Parameter sessionId diperlukan.', { status: 400 });
+  }
+  const session = await getObservationSession(sessionId, schoolCode);
+  if (!session) {
+    return new NextResponse('Sesi observasi tidak ditemukan.', { status: 404 });
+  }
 
   const school = getSchoolByCode(schoolCode);
   const theme = OBSERVATION_THEMES.find((t) => t.id === session.themeId);
   const ttdUrl = getTtdUrl(schoolCode);
   const dateStr = new Date(session.sessionDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
   const classAvg = session.records.length > 0
-    ? (session.records.reduce((s, r) => s + r.averageScore, 0) / session.records.length).toFixed(2) : '0.00';
+    ? (session.records.reduce((s, r) => s + r.averageScore, 0) / session.records.length).toFixed(2) : '0,00';
 
   const rows = session.records.map((r, i) => `
-    <tr><td>${i+1}</td><td>${r.childName}</td><td>${r.totalScore}/48</td>
+    <tr><td>${i + 1}</td><td>${escapeHtml(r.childName)}</td><td>${r.totalScore}/48</td>
     <td>${r.averageScore.toFixed(2)}</td><td><strong>${r.category}</strong> — ${CATEGORY_LABELS[r.category]}</td></tr>
   `).join('');
 
   const html = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/>
-<title>Rekap Observasi – ${school?.name ?? schoolCode}</title>
+<title>Rekap Observasi – ${escapeHtml(school?.name ?? schoolCode)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#0f172a}
@@ -56,8 +55,8 @@ tr:nth-child(even) td{background:#f7fbf6}
 <h1>FORM OBSERVASI PERKEMBANGAN ANAK</h1>
 <p class="sub">VFT Experiment Natural Science &amp; Eksperimen STEAM EduGreen</p>
 <div class="meta">
-  <div><label>Sekolah</label><span>${school?.name ?? schoolCode}</span></div>
-  <div><label>Tema</label><span>${theme?.name ?? session.themeId}</span></div>
+  <div><label>Sekolah</label><span>${escapeHtml(school?.name ?? schoolCode)}</span></div>
+  <div><label>Tema</label><span>${escapeHtml(theme?.name ?? session.themeId)}</span></div>
   <div><label>Tanggal</label><span>${dateStr}</span></div>
   <div><label>Rata-rata Kelas</label><span>${classAvg}</span></div>
 </div>
@@ -70,7 +69,7 @@ BSB (${CATEGORY_RANGES.BSB})=${CATEGORY_LABELS.BSB} | BSH (${CATEGORY_RANGES.BSH
 MB (${CATEGORY_RANGES.MB})=${CATEGORY_LABELS.MB} | BB (${CATEGORY_RANGES.BB})=${CATEGORY_LABELS.BB}</p>
 <div class="ttd">
   <p>Mengetahui,</p><p>Guru Pendamping,</p>
-  ${ttdUrl ? `<img src="${ttdUrl}" alt="Tanda tangan" />` : '<div style="height:80px"></div>'}
+  ${ttdUrl ? `<img src="${escapeHtml(ttdUrl)}" alt="Tanda tangan" />` : '<div style="height:80px"></div>'}
   <div><span class="name-line">Nama:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
 </div>
 <script>window.addEventListener('load',()=>window.print());</script>
