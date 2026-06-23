@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getObservationSession } from '@/lib/observation-store';
-import { getSchoolCodeFromCookie } from '@/lib/observation';
+import { getSchoolCodeFromCookie } from '@/lib/observation-server';
 
 type RouteContext = {
   params: Promise<{ id: string }>;

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getObservationSession } from '@/lib/observation-store';
+import { getSchoolCodeFromCookie, escapeHtml } from '@/lib/observation-server';
 import {
   OBSERVATION_THEMES, CATEGORY_RANGES, CATEGORY_LABELS,
-  getSchoolByCode, getTtdUrl, getSchoolCodeFromCookie, escapeHtml,
+  getSchoolByCode, getTtdUrl,
 } from '@/lib/observation';
 
 export async function GET(request: Request) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createObservationSession, listObservationSessions } from '@/lib/observation-store';
-import { getSchoolCodeFromCookie, type SchoolCode, type ObservationThemeId, type ChildScores } from '@/lib/observation';
+import { getSchoolCodeFromCookie } from '@/lib/observation-server';
+import { type SchoolCode, type ObservationThemeId, type ChildScores } from '@/lib/observation';
 
 export async function GET() {
   const schoolCode = await getSchoolCodeFromCookie();
