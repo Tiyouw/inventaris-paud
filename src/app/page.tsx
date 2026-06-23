@@ -38,6 +38,25 @@ import {
 import { compressImageToWebp, validateSourceImage } from "@/lib/media";
 import { useSchool } from "@/lib/school-context";
 import { SchoolGuard } from "@/components/SchoolGuard";
+import {
+  OBSERVATION_THEMES,
+  OBSERVATION_INDICATORS,
+  CATEGORY_LABELS,
+  createEmptyWizard,
+  createEmptyChild,
+  getCategory,
+  areAllScoresFilled,
+  calculateAverageScore,
+  type WizardState,
+  type ObservationSession,
+  type ChildScores,
+  type ObservationThemeId,
+} from "@/lib/observation";
+import {
+  fetchObservationSessions,
+  saveObservationSession,
+  openObservationReport,
+} from "@/lib/api-client";
 
 type AppTab = "dashboard" | "zones";
 

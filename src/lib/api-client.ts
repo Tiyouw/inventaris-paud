@@ -158,6 +158,31 @@ export async function uploadInventoryPhoto(
   return payload.url;
 }
 
+import type { ObservationSession, ObservationThemeId, ChildScores } from './observation';
+
+export async function fetchObservationSessions(): Promise<ObservationSession[]> {
+  const res = await fetch('/api/observation/sessions', { cache: 'no-store' });
+  if (!res.ok) throw new Error('Gagal memuat sesi observasi.');
+  return ((await res.json()) as { sessions: ObservationSession[] }).sessions;
+}
+
+export async function saveObservationSession(input: {
+  themeId: ObservationThemeId;
+  sessionDate: string;
+  children: { name: string; scores: ChildScores }[];
+}): Promise<ObservationSession> {
+  const res = await fetch('/api/observation/sessions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error('Gagal menyimpan sesi observasi.');
+  return ((await res.json()) as { session: ObservationSession }).session;
+}
+
+export function openObservationReport(sessionId: string): void {
+  window.open(`/api/observation/report?sessionId=${sessionId}`, '_blank', 'noopener,noreferrer');
+}
+
 async function getApiError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as ApiErrorPayload;
