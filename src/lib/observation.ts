@@ -61,6 +61,8 @@ export function getTtdUrl(code: string): string {
 }
 
 // ─── Score types ──────────────────────────────────────────────────────────────
+// Scores are indexed positionally matching OBSERVATION_INDICATORS:
+//   score_1 = OBSERVATION_INDICATORS[0], score_2 = INDICATORS[1], ...
 export type ChildScores = [
   number, number, number, number,
   number, number, number, number,
@@ -85,6 +87,7 @@ export type ObservationRecord = {
 };
 export type ObservationSession = {
   id: string; schoolCode: SchoolCode; themeId: ObservationThemeId;
+  /** YYYY-MM-DD string — maps to SQL column session_date (date, no time component) */
   sessionDate: string; createdAt: string; records: ObservationRecord[];
 };
 

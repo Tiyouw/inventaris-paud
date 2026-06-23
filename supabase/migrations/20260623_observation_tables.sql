@@ -40,3 +40,4 @@ create table if not exists public.observation_records (
 create index if not exists obs_sessions_school_idx on public.observation_sessions (school_code);
 create index if not exists obs_sessions_date_idx on public.observation_sessions (session_date desc);
 create index if not exists obs_records_session_idx on public.observation_records (session_id);
+
