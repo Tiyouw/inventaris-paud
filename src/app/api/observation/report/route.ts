@@ -1,0 +1,80 @@
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { getObservationSession } from '@/lib/observation-store';
+import {
+  OBSERVATION_SCHOOLS, OBSERVATION_THEMES, CATEGORY_RANGES, CATEGORY_LABELS,
+  getSchoolByCode, getTtdUrl, type SchoolCode,
+} from '@/lib/observation';
+
+async function getSchoolCode(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const val = cookieStore.get('school_session')?.value ?? null;
+  return val && OBSERVATION_SCHOOLS.some((s) => s.code === val) ? val : null;
+}
+
+export async function GET(request: Request) {
+  const schoolCode = await getSchoolCode();
+  if (!schoolCode) return new NextResponse('Unauthorized', { status: 401 });
+  const sessionId = new URL(request.url).searchParams.get('sessionId');
+  if (!sessionId) return new NextResponse('sessionId required', { status: 400 });
+  const session = await getObservationSession(sessionId, schoolCode).catch(() => null);
+  if (!session) return new NextResponse('Not found', { status: 404 });
+
+  const school = getSchoolByCode(schoolCode);
+  const theme = OBSERVATION_THEMES.find((t) => t.id === session.themeId);
+  const ttdUrl = getTtdUrl(schoolCode);
+  const dateStr = new Date(session.sessionDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const classAvg = session.records.length > 0
+    ? (session.records.reduce((s, r) => s + r.averageScore, 0) / session.records.length).toFixed(2) : '0.00';
+
+  const rows = session.records.map((r, i) => `
+    <tr><td>${i+1}</td><td>${r.childName}</td><td>${r.totalScore}/48</td>
+    <td>${r.averageScore.toFixed(2)}</td><td><strong>${r.category}</strong> — ${CATEGORY_LABELS[r.category]}</td></tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/>
+<title>Rekap Observasi – ${school?.name ?? schoolCode}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#0f172a}
+h1{font-size:15px;text-align:center;margin-bottom:4px}
+.sub{text-align:center;font-size:12px;color:#475569;margin-bottom:16px}
+.meta{display:flex;gap:24px;background:#f7fbf6;padding:10px 14px;border-radius:8px;margin-bottom:16px}
+.meta label{font-size:10px;color:#64748b;display:block;font-weight:bold;text-transform:uppercase}
+.meta span{font-weight:bold}
+table{width:100%;border-collapse:collapse;margin-bottom:16px}
+th{background:#2f7d68;color:#fff;padding:8px 10px;text-align:left;font-size:11px}
+td{padding:8px 10px;border-bottom:1px solid #dbe9de;font-size:11px}
+tr:nth-child(even) td{background:#f7fbf6}
+.legend{font-size:10px;color:#475569;margin-bottom:20px}
+.ttd{margin-top:40px;text-align:right}
+.ttd p{margin-bottom:4px;font-size:11px}
+.ttd img{max-width:160px;max-height:80px;margin:8px 0;display:block;margin-left:auto}
+.name-line{border-top:1px solid #0f172a;padding-top:4px;min-width:200px;display:inline-block;font-size:11px}
+@media print{body{padding:12px}@page{size:A4;margin:16mm}}
+</style></head><body>
+<h1>FORM OBSERVASI PERKEMBANGAN ANAK</h1>
+<p class="sub">VFT Experiment Natural Science &amp; Eksperimen STEAM EduGreen</p>
+<div class="meta">
+  <div><label>Sekolah</label><span>${school?.name ?? schoolCode}</span></div>
+  <div><label>Tema</label><span>${theme?.name ?? session.themeId}</span></div>
+  <div><label>Tanggal</label><span>${dateStr}</span></div>
+  <div><label>Rata-rata Kelas</label><span>${classAvg}</span></div>
+</div>
+<table>
+  <thead><tr><th>No</th><th>Nama Anak</th><th>Total</th><th>Rata-rata</th><th>Kategori</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<p class="legend"><strong>Keterangan:</strong>
+BSB (${CATEGORY_RANGES.BSB})=${CATEGORY_LABELS.BSB} | BSH (${CATEGORY_RANGES.BSH})=${CATEGORY_LABELS.BSH} |
+MB (${CATEGORY_RANGES.MB})=${CATEGORY_LABELS.MB} | BB (${CATEGORY_RANGES.BB})=${CATEGORY_LABELS.BB}</p>
+<div class="ttd">
+  <p>Mengetahui,</p><p>Guru Pendamping,</p>
+  ${ttdUrl ? `<img src="${ttdUrl}" alt="Tanda tangan" />` : '<div style="height:80px"></div>'}
+  <div><span class="name-line">Nama:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+</div>
+<script>window.addEventListener('load',()=>window.print());</script>
+</body></html>`;
+
+  return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
