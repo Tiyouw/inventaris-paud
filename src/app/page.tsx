@@ -56,6 +56,7 @@ import {
   fetchObservationSessions,
   saveObservationSession,
   removeObservationSession,
+  modifyObservationSession,
 } from "@/lib/api-client";
 
 type AppTab = "dashboard" | "zones" | "observasi";
@@ -1621,6 +1622,8 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [printSessionId, setPrintSessionId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<ObservationSession | null>(null);
 
   useEffect(() => {
     fetchObservationSessions().then(setSessions).catch(() => setSessions([])).finally(() => setIsLoading(false));
@@ -1631,6 +1634,23 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
     setActiveChildIndex(0);
     setSavedSession(null);
     setSaveError('');
+    setEditingSessionId(null);
+    setStep('step1');
+  }
+
+  function handleEditSession(session: ObservationSession) {
+    setWizard({
+      themeId: session.themeId,
+      sessionDate: session.sessionDate,
+      children: session.records.map((r) => ({
+        name: r.childName,
+        scores: [...r.scores],
+      })),
+    });
+    setActiveChildIndex(0);
+    setSavedSession(null);
+    setSaveError('');
+    setEditingSessionId(session.id);
     setStep('step1');
   }
 
@@ -1663,13 +1683,23 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
     setSaveError('');
     setIsSaving(true);
     try {
-      const session = await saveObservationSession({
+      const payload = {
         themeId: wizard.themeId as ObservationThemeId,
         sessionDate: wizard.sessionDate,
         children: wizard.children.map((c) => ({ name: c.name.trim(), scores: c.scores })),
-      });
+      };
+
+      let session: ObservationSession;
+      if (editingSessionId) {
+        session = await modifyObservationSession(editingSessionId, payload);
+        setSessions((prev) => prev.map((s) => (s.id === editingSessionId ? session : s)));
+      } else {
+        session = await saveObservationSession(payload);
+        setSessions((prev) => [session, ...prev]);
+      }
+      
       setSavedSession(session);
-      setSessions((prev) => [session, ...prev]);
+      setEditingSessionId(null);
       setStep('step3');
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Gagal menyimpan sesi observasi.');
@@ -1681,14 +1711,16 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
   function goBackToList() {
     setStep('list');
     setSavedSession(null);
+    setEditingSessionId(null);
     setSaveError('');
   }
 
-  async function handleDeleteSession(id: string) {
-    if (!window.confirm("Yakin ingin menghapus sesi observasi ini? Data anak dan skor akan terhapus permanen.")) return;
+  async function confirmDeleteSession() {
+    if (!deleteSessionTarget) return;
     try {
-      await removeObservationSession(id);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      await removeObservationSession(deleteSessionTarget.id);
+      setSessions((prev) => prev.filter((s) => s.id !== deleteSessionTarget.id));
+      setDeleteSessionTarget(null);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Gagal menghapus sesi");
     }
@@ -1741,13 +1773,19 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                     </div>
                     <div className="flex gap-2">
                       <button
+                        onClick={() => handleEditSession(s)}
+                        className="rounded-full bg-white ring-1 ring-[#dbe9de] px-4 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 hover:text-[#2f7d68]"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
                         onClick={() => setPrintSessionId(s.id)}
                         className="rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] transition hover:bg-[#d3f0dc]"
                       >
                         🖨️ Cetak
                       </button>
                       <button
-                        onClick={() => handleDeleteSession(s.id)}
+                        onClick={() => setDeleteSessionTarget(s)}
                         className="rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600 transition hover:bg-red-100"
                       >
                         🗑️ Hapus
@@ -1762,7 +1800,9 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
       ) : (
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center justify-between mb-4">
-            <button onClick={goBackToList} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-[#dbe9de]">← Kembali</button>
+            <button onClick={goBackToList} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-[#dbe9de]">
+              {editingSessionId ? 'Batal Edit' : '← Kembali'}
+            </button>
             <ObsStepIndicator current={step === 'step1' ? 1 : step === 'step2' ? 2 : 3} />
           </div>
           {saveError ? (
@@ -1771,7 +1811,9 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
 
           {step === 'step1' && (
             <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)] space-y-5">
-              <h3 className="text-xl font-black text-slate-950">Setup Sesi Observasi</h3>
+              <h3 className="text-xl font-black text-slate-950">
+                {editingSessionId ? 'Edit Sesi Observasi' : 'Setup Sesi Observasi'}
+              </h3>
 
               {/* Theme card picker */}
               <div>
@@ -2025,6 +2067,14 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
           )}
         </div>
       )}
+      
+      {deleteSessionTarget && (
+        <ObservationDeleteDialog
+          session={deleteSessionTarget}
+          onCancel={() => setDeleteSessionTarget(null)}
+          onConfirm={confirmDeleteSession}
+        />
+      )}
     </section>
   );
 }
@@ -2266,6 +2316,55 @@ function ZoneDeleteDialog({
     </div>
   );
 }
+
+function ObservationDeleteDialog({
+  onCancel,
+  onConfirm,
+  session,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  session: ObservationSession;
+}) {
+  const theme = OBSERVATION_THEMES.find((t) => t.id === session.themeId);
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="obs-delete-dialog-title"
+    >
+      <div className="w-full max-w-md rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-2xl">
+        <h2
+          id="obs-delete-dialog-title"
+          className="text-xl font-black text-slate-950"
+        >
+          Hapus sesi observasi?
+        </h2>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">
+          Sesi <span className="font-black text-slate-950">{theme?.name || session.themeId}</span> tanggal <span className="font-black text-slate-950">{session.sessionDate}</span> akan dihapus. Data anak dan skor akan terhapus permanen dan tidak bisa dikembalikan.
+        </p>
+        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 rounded-full bg-slate-50 px-5 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="min-h-11 rounded-full bg-red-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-red-700 hover:-translate-y-0.5 active:translate-y-0"
+          >
+            Ya, Hapus Sesi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function PencilIcon() {
   return (

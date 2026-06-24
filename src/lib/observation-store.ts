@@ -129,3 +129,50 @@ export async function deleteObservationSession(id: string, schoolCode: string): 
     throw error;
   }
 }
+
+export async function updateObservationSession(
+  id: string,
+  input: CreateObservationInput
+): Promise<ObservationSession> {
+  const supabase = requireClient();
+  for (const child of input.children) {
+    if (child.scores.length !== INDICATOR_COUNT) throw new Error(`Semua ${INDICATOR_COUNT} indikator harus diisi untuk ${child.name}.`);
+    if (child.scores.some((s) => s < 1 || s > 4)) throw new Error(`Skor harus 1–4 untuk ${child.name}.`);
+  }
+
+  const { data: session, error: sessErr } = await supabase
+    .from('observation_sessions')
+    .update({ theme_id: input.themeId, session_date: input.sessionDate })
+    .eq('id', id)
+    .eq('school_code', input.schoolCode)
+    .select('*').single();
+  if (sessErr) throw sessErr;
+  if (!session) throw new Error("Sesi observasi tidak ditemukan");
+
+  const { error: delErr } = await supabase
+    .from('observation_records')
+    .delete()
+    .eq('session_id', id);
+  if (delErr) throw delErr;
+
+  const recordsToInsert = input.children.map((child) => {
+    const totalScore = child.scores.reduce((sum, s) => sum + s, 0);
+    const averageScore = Math.round((totalScore / INDICATOR_COUNT) * 100) / 100;
+    return {
+      session_id: id,
+      child_name: child.name.trim(),
+      score_1: child.scores[0], score_2: child.scores[1], score_3: child.scores[2], score_4: child.scores[3],
+      score_5: child.scores[4], score_6: child.scores[5], score_7: child.scores[6], score_8: child.scores[7],
+      score_9: child.scores[8], score_10: child.scores[9], score_11: child.scores[10], score_12: child.scores[11],
+      total_score: totalScore, average_score: averageScore, category: getCategory(averageScore),
+    };
+  });
+
+  const { data: records, error: recErr } = await supabase
+    .from('observation_records')
+    .insert(recordsToInsert)
+    .select('*');
+  if (recErr) throw recErr;
+
+  return mapSession(session as DbSessionRow, ((records ?? []) as DbRecordRow[]).map(mapRecord));
+}

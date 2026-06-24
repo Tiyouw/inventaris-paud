@@ -179,6 +179,19 @@ export async function saveObservationSession(input: {
   return ((await res.json()) as { session: ObservationSession }).session;
 }
 
+export async function modifyObservationSession(id: string, input: {
+  themeId: ObservationThemeId;
+  sessionDate: string;
+  children: { name: string; scores: ChildScores }[];
+}): Promise<ObservationSession> {
+  const res = await fetch(`/api/observation/sessions/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error('Gagal memperbarui sesi observasi.');
+  return ((await res.json()) as { session: ObservationSession }).session;
+}
+
 export function openObservationReport(sessionId: string): void {
   window.open(`/api/observation/report?sessionId=${sessionId}`, '_blank', 'noopener,noreferrer');
 }
