@@ -8,11 +8,11 @@ import {
 
 // Teacher name per school code
 const TEACHER_NAMES: Record<string, string> = {
-  '59': 'Musbiha, S.Pd.',
-  '69': 'Mei Al Ifa, S.Pd.',
-  '01': 'Khumaidah, S.Pd.',
-  '15': 'Avin Wardani, S.Pd.',
-  '02': 'Anik Susiawati, S.Pd.',
+  '59': 'Musbiha',
+  '69': 'Mei Al Ifa',
+  '01': 'Khumaidah',
+  '15': 'Avin Wardani',
+  '02': 'Anik Susiawati',
 };
 
 export async function GET(request: Request) {

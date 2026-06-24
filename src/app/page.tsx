@@ -1757,7 +1757,7 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
               {/* Theme card picker */}
               <div>
                 <span className="text-xs font-black uppercase text-slate-400">Tema Eksperimen</span>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
                   {OBSERVATION_THEMES.map((t) => {
                     const isSelected = wizard.themeId === t.id;
                     return (
@@ -1765,19 +1765,25 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                         key={t.id}
                         type="button"
                         onClick={() => setWizard((p) => ({ ...p, themeId: t.id }))}
-                        className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition ${
+                        className={`group relative flex items-center gap-4 overflow-hidden rounded-2xl border-2 p-4 text-left transition-all duration-300 ${
                           isSelected
-                            ? 'border-[#2f7d68] bg-[#edf7f1] shadow-sm'
-                            : 'border-[#dbe9de] bg-[#f7fbf6] hover:border-[#aad4c4] hover:bg-white'
+                            ? 'border-[#2f7d68] bg-[#edf7f1] shadow-md ring-4 ring-[#2f7d68]/10'
+                            : 'border-[#dbe9de] bg-white hover:-translate-y-1 hover:border-[#aad4c4] hover:shadow-lg'
                         }`}
                       >
-                        <span className="text-2xl">{t.emoji}</span>
-                        <span className={`text-sm font-black leading-snug ${
-                          isSelected ? 'text-[#2f7d68]' : 'text-slate-700'
-                        }`}>
-                          {t.name.replace('Eksperimen ', '')}
-                        </span>
-                        {isSelected && <span className="ml-auto text-[#2f7d68]">✓</span>}
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl transition-transform duration-300 ${isSelected ? 'scale-110 bg-white shadow-sm' : 'bg-[#f7fbf6] group-hover:scale-110'}`}>
+                          {t.emoji}
+                        </div>
+                        <div className="flex-1">
+                          <span className={`block text-base font-black leading-snug ${isSelected ? 'text-[#2f7d68]' : 'text-slate-700'}`}>
+                            {t.name.replace('Eksperimen ', '')}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xl text-[#2f7d68]">
+                            ✓
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -1787,13 +1793,15 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
               {/* Date picker */}
               <div>
                 <span className="text-xs font-black uppercase text-slate-400">Tanggal Sesi</span>
-                <div className="relative mt-2">
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base">📅</span>
+                <div className="relative mt-2 overflow-hidden rounded-2xl border-2 border-[#dbe9de] bg-white transition-all focus-within:border-[#2f7d68] focus-within:ring-4 focus-within:ring-[#2f7d68]/10 hover:border-[#aad4c4]">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-xl">
+                    📅
+                  </div>
                   <input
                     type="date"
                     value={wizard.sessionDate}
                     onChange={(e) => setWizard((p) => ({ ...p, sessionDate: e.target.value }))}
-                    className="h-12 w-full rounded-2xl border-2 border-[#dbe9de] bg-[#f7fbf6] py-0 pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2f7d68] focus:bg-white"
+                    className="h-14 w-full bg-transparent pl-12 pr-4 text-base font-black text-slate-800 outline-none [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
                   />
                 </div>
               </div>
@@ -1880,31 +1888,33 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                     <div key={idx} className={`rounded-2xl border p-4 transition ${
                       score > 0 ? 'border-[#aad4c4] bg-[#f0faf5]' : 'border-[#dbe9de] bg-[#f7fbf6]'
                     }`}>
-                      <p className="text-sm font-bold text-slate-700 mb-3">
-                        <span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#2f7d68] text-[10px] font-black text-white">{idx + 1}</span>
+                      <p className="text-sm font-bold text-slate-700 mb-4 text-center">
+                        <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7d68] text-[10px] font-black text-white">{idx + 1}</span>
                         {indicator}
                       </p>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap items-center justify-center gap-3">
                         {[1, 2, 3, 4].map((s) => (
                           <button
                             key={s}
                             type="button"
                             onClick={() => setChildScore(activeChildIndex, idx, s)}
-                            className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-black transition ${
+                            className={`flex h-12 w-12 items-center justify-center rounded-full text-base font-black transition-all duration-200 ${
                               score === s
-                                ? 'bg-[#2f7d68] text-white shadow-sm scale-110'
-                                : 'bg-white text-slate-600 ring-1 ring-[#dbe9de] hover:ring-[#2f7d68] hover:text-[#2f7d68]'
+                                ? 'bg-[#2f7d68] text-white shadow-md scale-110'
+                                : 'bg-white text-slate-600 ring-2 ring-[#dbe9de] hover:ring-[#2f7d68] hover:text-[#2f7d68] hover:-translate-y-0.5'
                             }`}
                           >
                             {s}
                           </button>
                         ))}
-                        {score > 0 && (
-                          <span className="ml-2 self-center rounded-full bg-[#edf7f1] px-2.5 py-0.5 text-xs font-black text-[#2f7d68]">
-                            {['', 'BB', 'MB', 'BSH', 'BSB'][score]}
-                          </span>
-                        )}
                       </div>
+                      {score > 0 && (
+                        <div className="mt-3 flex justify-center">
+                          <span className="rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-black text-[#2f7d68] shadow-sm">
+                            {['', 'Belum Berkembang (BB)', 'Mulai Berkembang (MB)', 'Berkembang Sesuai Harapan (BSH)', 'Berkembang Sangat Baik (BSB)'][score]}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
