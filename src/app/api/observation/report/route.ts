@@ -84,7 +84,23 @@ MB (${CATEGORY_RANGES.MB})=${CATEGORY_LABELS.MB} | BB (${CATEGORY_RANGES.BB})=${
   ${ttdUrl ? `<img src="${escapeHtml(ttdUrl)}" alt="Tanda tangan" />` : '<div style="height:80px"></div>'}
   <div><span class="name-line">${escapeHtml(teacherName)}</span></div>
 </div>
-${new URL(request.url).searchParams.get('print') === '1' ? "<script>window.addEventListener('load',()=>window.print());</script>" : ""}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+  window.addEventListener('message', (event) => {
+    if (event.data === 'download_pdf') {
+      const element = document.body;
+      const opt = {
+        margin:       0.3,
+        filename:     'Rekap_Observasi_${schoolCode}_${dateStr.replace(/ /g, '_')}.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+      html2pdf().set(opt).from(element).save();
+    }
+  });
+  ${new URL(request.url).searchParams.get('print') === '1' ? "window.print();" : ""}
+</script>
 </body></html>`;
 
   return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });

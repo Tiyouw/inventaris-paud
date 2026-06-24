@@ -1592,18 +1592,31 @@ function PrintPreviewModal({ sessionId, onClose }: { sessionId: string; onClose:
           ← Kembali
         </button>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
+              if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage('download_pdf', '*');
+              }
+            }}
+            className="flex items-center gap-2 rounded-full bg-[#2f7d68] px-5 py-2 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
+          >
+            📥 Unduh PDF
+          </button>
           <a
             href={`${url}&print=1`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-full bg-[#2f7d68] px-5 py-2 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
+            className="flex items-center gap-2 rounded-full bg-slate-100 px-5 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-200"
           >
-            🖨️ Cetak / Unduh PDF
+            🖨️ Cetak Printer
           </a>
         </div>
       </div>
       {/* Preview */}
       <iframe
+        id="preview-iframe"
         src={url}
         className="flex-1 w-full bg-white"
         title="Preview Rekap Observasi"
