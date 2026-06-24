@@ -62,7 +62,7 @@ tr:nth-child(even) td{background:#f7fbf6}
 .ttd p{margin-bottom:4px;font-size:11px}
 .ttd img{max-width:160px;max-height:80px;margin:8px 0;display:block;margin-left:auto}
 .name-line{border-top:1px solid #0f172a;padding-top:6px;min-width:200px;display:inline-block;font-size:11px;font-weight:bold;text-align:center}
-@media print{body{padding:12px}@page{size:A4;margin:16mm}}
+@media print{body{padding:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{size:A4;margin:16mm}}
 </style></head><body>
 <h1>FORM OBSERVASI PERKEMBANGAN ANAK</h1>
 <p class="sub">VFT Experiment Natural Science &amp; Eksperimen STEAM EduGreen</p>
@@ -84,7 +84,7 @@ MB (${CATEGORY_RANGES.MB})=${CATEGORY_LABELS.MB} | BB (${CATEGORY_RANGES.BB})=${
   ${ttdUrl ? `<img src="${escapeHtml(ttdUrl)}" alt="Tanda tangan" />` : '<div style="height:80px"></div>'}
   <div><span class="name-line">${escapeHtml(teacherName)}</span></div>
 </div>
-<script>window.addEventListener('load',()=>window.print());</script>
+${new URL(request.url).searchParams.get('print') === '1' ? "<script>window.addEventListener('load',()=>window.print());</script>" : ""}
 </body></html>`;
 
   return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });

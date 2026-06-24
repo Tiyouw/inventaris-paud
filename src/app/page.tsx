@@ -1593,7 +1593,7 @@ function PrintPreviewModal({ sessionId, onClose }: { sessionId: string; onClose:
         </button>
         <div className="ml-auto flex items-center gap-2">
           <a
-            href={url}
+            href={`${url}&print=1`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-full bg-[#2f7d68] px-5 py-2 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
