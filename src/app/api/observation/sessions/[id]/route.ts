@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getObservationSession } from '@/lib/observation-store';
+import { getObservationSession, deleteObservationSession } from '@/lib/observation-store';
 import { getSchoolCodeFromCookie } from '@/lib/observation-server';
 
 type RouteContext = {
@@ -17,4 +17,35 @@ export async function GET(_req: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Sesi observasi tidak ditemukan.' }, { status: 404 });
   }
   return NextResponse.json({ session });
+}
+
+export async function DELETE(_req: Request, context: RouteContext) {
+  try {
+    const schoolCode = await getSchoolCodeFromCookie();
+    if (!schoolCode) {
+      return NextResponse.json(
+        { error: "Tidak ada sesi sekolah. Silakan login ulang." },
+        { status: 401 },
+      );
+    }
+
+    const { id } = await context.params;
+    if (!id) {
+      return NextResponse.json({ error: "ID sesi tidak valid" }, { status: 400 });
+    }
+
+    await deleteObservationSession(id, schoolCode);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting observation session:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Gagal menghapus sesi observasi",
+      },
+      { status: 500 },
+    );
+  }
 }

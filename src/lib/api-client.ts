@@ -183,6 +183,13 @@ export function openObservationReport(sessionId: string): void {
   window.open(`/api/observation/report?sessionId=${sessionId}`, '_blank', 'noopener,noreferrer');
 }
 
+export async function removeObservationSession(sessionId: string): Promise<void> {
+  const res = await fetch(`/api/observation/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Gagal menghapus sesi observasi.');
+}
+
 async function getApiError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as ApiErrorPayload;

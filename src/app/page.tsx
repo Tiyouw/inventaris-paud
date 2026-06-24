@@ -55,6 +55,7 @@ import {
 import {
   fetchObservationSessions,
   saveObservationSession,
+  removeObservationSession,
 } from "@/lib/api-client";
 
 type AppTab = "dashboard" | "zones" | "observasi";
@@ -1683,6 +1684,16 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
     setSaveError('');
   }
 
+  async function handleDeleteSession(id: string) {
+    if (!window.confirm("Yakin ingin menghapus sesi observasi ini? Data anak dan skor akan terhapus permanen.")) return;
+    try {
+      await removeObservationSession(id);
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Gagal menghapus sesi");
+    }
+  }
+
   const currentTheme = wizard.themeId ? OBSERVATION_THEMES.find((t) => t.id === wizard.themeId) : null;
 
   // If print modal is open, render it full-screen
@@ -1728,12 +1739,20 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                       <p className="font-black text-slate-950">{theme?.emoji} {theme?.name ?? s.themeId}</p>
                       <p className="text-sm font-semibold text-slate-500">{s.sessionDate} &middot; {s.records.length} anak</p>
                     </div>
-                    <button
-                      onClick={() => setPrintSessionId(s.id)}
-                      className="rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] transition hover:bg-[#d3f0dc]"
-                    >
-                      🖨️ Cetak
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPrintSessionId(s.id)}
+                        className="rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] transition hover:bg-[#d3f0dc]"
+                      >
+                        🖨️ Cetak
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSession(s.id)}
+                        className="rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600 transition hover:bg-red-100"
+                      >
+                        🗑️ Hapus
+                      </button>
+                    </div>
                   </div>
                 );
               })}

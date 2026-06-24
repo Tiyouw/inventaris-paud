@@ -116,3 +116,16 @@ export async function createObservationSession(input: CreateObservationInput): P
   }
   return mapSession(session as DbSessionRow, ((records ?? []) as DbRecordRow[]).map(mapRecord));
 }
+
+export async function deleteObservationSession(id: string, schoolCode: string): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase
+    .from('observation_sessions')
+    .delete()
+    .eq('id', id)
+    .eq('school_code', schoolCode);
+
+  if (error) {
+    throw error;
+  }
+}
