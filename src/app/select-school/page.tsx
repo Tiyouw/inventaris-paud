@@ -74,7 +74,15 @@ export default function SelectSchoolPage() {
         return;
       }
 
+      // Set cookie via API (for server-side route auth)
       sessionStorage.setItem("school_code", selectedCode);
+
+      // Also set localStorage via school-context so SchoolGuard lets the user through
+      const school = OBSERVATION_SCHOOLS.find((s) => s.code === selectedCode);
+      if (school) {
+        selectSchool({ id: selectedCode, name: school.name });
+      }
+
       router.push("/");
     } catch {
       showError("Gagal terhubung ke server. Periksa koneksi internet.");
