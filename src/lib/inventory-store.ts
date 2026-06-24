@@ -20,6 +20,40 @@ import {
   getSupabaseServerConfig,
 } from "./supabase";
 
+let schoolUuidCache: Record<string, string> | null = null;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function getSchoolUuid(
+  supabase: SupabaseClient,
+  schoolCode: string,
+): Promise<string> {
+  if (UUID_REGEX.test(schoolCode)) {
+    return schoolCode;
+  }
+
+  if (schoolUuidCache && schoolUuidCache[schoolCode]) {
+    return schoolUuidCache[schoolCode];
+  }
+
+  const { data, error } = await supabase.from("schools").select("id, access_code");
+
+  if (error || !data) {
+    throw error || new Error("Gagal mengambil data sekolah");
+  }
+
+  schoolUuidCache = {};
+  for (const row of data) {
+    schoolUuidCache[row.access_code] = row.id;
+  }
+
+  const uuid = schoolUuidCache[schoolCode];
+  if (!uuid) {
+    throw new InventoryValidationError("Sekolah tidak ditemukan.");
+  }
+
+  return uuid;
+}
+
 type InventoryPayload = {
   items: InventoryItem[];
   conditionLogs: ConditionLog[];
@@ -114,6 +148,7 @@ const LEGACY_CONDITION_MAP: Record<string, ConditionTypeId> = {
 
 export async function listInventory(schoolId?: string): Promise<InventoryPayload> {
   const supabase = requireSupabaseClient();
+  const schoolUuid = schoolId ? await getSchoolUuid(supabase, schoolId) : undefined;
 
   let itemsQuery = supabase
     .from("items")
@@ -123,15 +158,15 @@ export async function listInventory(schoolId?: string): Promise<InventoryPayload
     .eq("is_active", true)
     .order("updated_at", { ascending: false });
 
-  if (schoolId) {
-    itemsQuery = itemsQuery.eq("school_id", schoolId);
+  if (schoolUuid) {
+    itemsQuery = itemsQuery.eq("school_id", schoolUuid);
   }
 
   const [zonesResult, itemsResult] = await Promise.all([
     (() => {
       let zonesQuery = supabase.from("zones").select("id, name, slug, description").order("name");
-      if (schoolId) {
-        zonesQuery = zonesQuery.eq("school_id", schoolId);
+      if (schoolUuid) {
+        zonesQuery = zonesQuery.eq("school_id", schoolUuid);
       }
       return zonesQuery;
     })(),
@@ -192,7 +227,9 @@ export async function createInventoryItem(
   const supabase = requireSupabaseClient();
   const zone = await getZoneBySlug(supabase, input.zoneId);
   const now = new Date().toISOString();
-  const itemToInsert = toDbItemInsert(input, zone.id, now);
+  const schoolUuid = input.school_id ? await getSchoolUuid(supabase, input.school_id) : undefined;
+  const inputWithUuid = { ...input, school_id: schoolUuid };
+  const itemToInsert = toDbItemInsert(inputWithUuid, zone.id, now);
 
   const { data: insertedItem, error: itemError } = await supabase
     .from("items")
@@ -237,13 +274,17 @@ export async function updateInventoryItem(
   const existing = await getItemById(supabase, itemId);
   const nextCheckedAt = toTimestamp(input.lastCheckedAt) ?? new Date().toISOString();
 
+  const schoolUuid = schoolId ? await getSchoolUuid(supabase, schoolId) : undefined;
+  const inputSchoolUuid = input.school_id ? await getSchoolUuid(supabase, input.school_id) : undefined;
+  const inputWithUuid = { ...input, school_id: inputSchoolUuid };
+
   let updateQuery = supabase
     .from("items")
-    .update(toDbItemUpdate(input, zone.id, nextCheckedAt))
+    .update(toDbItemUpdate(inputWithUuid, zone.id, nextCheckedAt))
     .eq("id", itemId);
 
-  if (schoolId) {
-    updateQuery = updateQuery.eq("school_id", schoolId);
+  if (schoolUuid) {
+    updateQuery = updateQuery.eq("school_id", schoolUuid);
   }
 
   const { data: updatedItem, error: updateError } = await updateQuery
@@ -282,6 +323,7 @@ export async function updateInventoryItem(
 
 export async function softDeleteInventoryItem(itemId: string, schoolId?: string): Promise<void> {
   const supabase = requireSupabaseClient();
+  const schoolUuid = schoolId ? await getSchoolUuid(supabase, schoolId) : undefined;
 
   let deleteQuery = supabase
     .from("items")
@@ -292,8 +334,8 @@ export async function softDeleteInventoryItem(itemId: string, schoolId?: string)
     })
     .eq("id", itemId);
 
-  if (schoolId) {
-    deleteQuery = deleteQuery.eq("school_id", schoolId);
+  if (schoolUuid) {
+    deleteQuery = deleteQuery.eq("school_id", schoolUuid);
   }
 
   const { error } = await deleteQuery;
@@ -308,7 +350,8 @@ export async function createInventoryZone(
 ): Promise<InventoryZone> {
   const name = validateZoneInput(input);
   const supabase = requireSupabaseClient();
-  const slug = await createUniqueZoneSlug(supabase, name, input.school_id);
+  const schoolUuid = input.school_id ? await getSchoolUuid(supabase, input.school_id) : undefined;
+  const slug = await createUniqueZoneSlug(supabase, name, schoolUuid);
 
   const { data, error } = await supabase
     .from("zones")
@@ -316,7 +359,7 @@ export async function createInventoryZone(
       name,
       slug,
       description: input.description?.trim() || null,
-      school_id: input.school_id || null,
+      school_id: schoolUuid || null,
     })
     .select("id, name, slug, description")
     .single();
