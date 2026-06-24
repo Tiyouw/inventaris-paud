@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { OBSERVATION_SCHOOLS, type SchoolCode } from '@/lib/observation';
 
 function getAccessCode(code: SchoolCode): string {
-  return (process.env[`SCHOOL_CODE_${code}`] as string | undefined) ?? code;
+  // Use || (not ??) so empty-string env vars fall back to the code itself
+  return process.env[`SCHOOL_CODE_${code}`] || code;
 }
 
 export async function POST(request: Request) {

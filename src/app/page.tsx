@@ -55,7 +55,6 @@ import {
 import {
   fetchObservationSessions,
   saveObservationSession,
-  openObservationReport,
 } from "@/lib/api-client";
 
 type AppTab = "dashboard" | "zones" | "observasi";
@@ -1033,7 +1032,6 @@ export default function Home() {
           active={activeTab === "observasi"}
           label="Observasi"
           onClick={() => setActiveTab("observasi")}
-          badge="BARU"
         />
       </nav>
 
@@ -1573,6 +1571,45 @@ function SchoolManagementSection() {
   );
 }
 
+// ─── Print Preview Modal ─────────────────────────────────────────────────────
+function PrintPreviewModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+  const url = `/api/observation/report?sessionId=${sessionId}`;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-slate-950/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 border-b border-[#dbe9de] bg-white px-4 py-3 shadow-sm">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex items-center gap-2 rounded-full bg-slate-50 px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-white"
+        >
+          ← Kembali
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-full bg-[#2f7d68] px-5 py-2 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
+          >
+            🖨️ Cetak / Unduh PDF
+          </a>
+        </div>
+      </div>
+      {/* Preview */}
+      <iframe
+        src={url}
+        className="flex-1 w-full bg-white"
+        title="Preview Rekap Observasi"
+      />
+    </div>
+  );
+}
+
 function ObservasiView({ schoolCode }: { schoolCode: string }) {
   const [step, setStep] = useState<'list' | 'step1' | 'step2' | 'step3'>('list');
   const [wizard, setWizard] = useState(createEmptyWizard());
@@ -1582,6 +1619,7 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [printSessionId, setPrintSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchObservationSessions().then(setSessions).catch(() => setSessions([])).finally(() => setIsLoading(false));
@@ -1647,6 +1685,11 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
 
   const currentTheme = wizard.themeId ? OBSERVATION_THEMES.find((t) => t.id === wizard.themeId) : null;
 
+  // If print modal is open, render it full-screen
+  if (printSessionId) {
+    return <PrintPreviewModal sessionId={printSessionId} onClose={() => setPrintSessionId(null)} />;
+  }
+
   return (
     <section className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-8">
       {step === 'list' ? (
@@ -1685,8 +1728,11 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                       <p className="font-black text-slate-950">{theme?.emoji} {theme?.name ?? s.themeId}</p>
                       <p className="text-sm font-semibold text-slate-500">{s.sessionDate} &middot; {s.records.length} anak</p>
                     </div>
-                    <button onClick={() => openObservationReport(s.id)} className="rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68]">
-                      Cetak
+                    <button
+                      onClick={() => setPrintSessionId(s.id)}
+                      className="rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] transition hover:bg-[#d3f0dc]"
+                    >
+                      🖨️ Cetak
                     </button>
                   </div>
                 );
@@ -1697,7 +1743,7 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
       ) : (
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center justify-between mb-4">
-            <button onClick={goBackToList} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-[#dbe9de]">Kembali</button>
+            <button onClick={goBackToList} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-[#dbe9de]">← Kembali</button>
             <ObsStepIndicator current={step === 'step1' ? 1 : step === 'step2' ? 2 : 3} />
           </div>
           {saveError ? (
@@ -1705,72 +1751,189 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
           ) : null}
 
           {step === 'step1' && (
-            <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)] space-y-4">
+            <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)] space-y-5">
               <h3 className="text-xl font-black text-slate-950">Setup Sesi Observasi</h3>
-              <label className="block">
+
+              {/* Theme card picker */}
+              <div>
                 <span className="text-xs font-black uppercase text-slate-400">Tema Eksperimen</span>
-                <select value={wizard.themeId} onChange={(e) => setWizard((p) => ({ ...p, themeId: e.target.value as ObservationThemeId | '' }))} className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]">
-                  <option value="">Pilih tema...</option>
-                  {OBSERVATION_THEMES.map((t) => (
-                    <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {OBSERVATION_THEMES.map((t) => {
+                    const isSelected = wizard.themeId === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setWizard((p) => ({ ...p, themeId: t.id }))}
+                        className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition ${
+                          isSelected
+                            ? 'border-[#2f7d68] bg-[#edf7f1] shadow-sm'
+                            : 'border-[#dbe9de] bg-[#f7fbf6] hover:border-[#aad4c4] hover:bg-white'
+                        }`}
+                      >
+                        <span className="text-2xl">{t.emoji}</span>
+                        <span className={`text-sm font-black leading-snug ${
+                          isSelected ? 'text-[#2f7d68]' : 'text-slate-700'
+                        }`}>
+                          {t.name.replace('Eksperimen ', '')}
+                        </span>
+                        {isSelected && <span className="ml-auto text-[#2f7d68]">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date picker */}
+              <div>
                 <span className="text-xs font-black uppercase text-slate-400">Tanggal Sesi</span>
-                <input type="date" value={wizard.sessionDate} onChange={(e) => setWizard((p) => ({ ...p, sessionDate: e.target.value }))} className="mt-1 h-12 w-full rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]" />
-              </label>
+                <div className="relative mt-2">
+                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base">📅</span>
+                  <input
+                    type="date"
+                    value={wizard.sessionDate}
+                    onChange={(e) => setWizard((p) => ({ ...p, sessionDate: e.target.value }))}
+                    className="h-12 w-full rounded-2xl border-2 border-[#dbe9de] bg-[#f7fbf6] py-0 pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2f7d68] focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Child names */}
               <div>
                 <span className="text-xs font-black uppercase text-slate-400">Nama Anak</span>
                 {wizard.children.map((child, i) => (
                   <div key={i} className="mt-2 flex gap-2">
-                    <input value={child.name} onChange={(e) => setWizard((p) => {
-                      const children = p.children.map((c, j) => j === i ? { ...c, name: e.target.value } : c);
-                      return { ...p, children };
-                    })} placeholder="Nama anak" className="h-12 flex-1 rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] px-3 text-sm font-semibold outline-none focus:border-[#2f7d68]" />
-                    {wizard.children.length > 1 ? (
-                      <button onClick={() => setWizard((p) => ({ ...p, children: p.children.filter((_, j) => j !== i), activeChildIndex: 0 }))} className="rounded-full bg-red-50 px-3 text-sm font-black text-red-600">Hapus</button>
-                    ) : null}
+                    <input
+                      value={child.name}
+                      onChange={(e) => setWizard((p) => {
+                        const children = p.children.map((c, j) => j === i ? { ...c, name: e.target.value } : c);
+                        return { ...p, children };
+                      })}
+                      placeholder={`Nama anak ${i + 1}`}
+                      className="h-12 flex-1 rounded-2xl border-2 border-[#dbe9de] bg-[#f7fbf6] px-4 text-sm font-semibold outline-none transition focus:border-[#2f7d68] focus:bg-white"
+                    />
+                    {wizard.children.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setWizard((p) => ({ ...p, children: p.children.filter((_, j) => j !== i) }))}
+                        className="rounded-full bg-red-50 px-4 text-sm font-black text-red-600 transition hover:bg-red-100"
+                      >
+                        Hapus
+                      </button>
+                    )}
                   </div>
                 ))}
-                <button onClick={() => setWizard((p) => ({ ...p, children: [...p.children, createEmptyChild('')] }))} className="mt-2 rounded-full bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68]">+ Tambah Anak</button>
+                <button
+                  type="button"
+                  onClick={() => setWizard((p) => ({ ...p, children: [...p.children, createEmptyChild('')] }))}
+                  className="mt-2 rounded-full border border-dashed border-[#aad4c4] bg-[#edf7f1] px-4 py-2 text-sm font-black text-[#2f7d68] transition hover:bg-[#d3f0dc]"
+                >
+                  + Tambah Anak
+                </button>
               </div>
-              <button onClick={goToStep2} className="min-h-12 w-full rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white">Lanjut Isi Skor →</button>
+
+              <button
+                type="button"
+                onClick={goToStep2}
+                className="min-h-12 w-full rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
+              >
+                Lanjut Isi Skor →
+              </button>
             </div>
           )}
 
           {step === 'step2' && wizard.children[activeChildIndex] && (
             <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)]">
-              <div className="flex items-center gap-2 mb-4">
+              {/* Child tabs */}
+              <div className="mb-5 flex flex-wrap gap-2">
                 {wizard.children.map((child, i) => (
-                  <button key={i} onClick={() => { setActiveChildIndex(i); setSaveError(''); }} className={`rounded-full px-4 py-2 text-sm font-black ${i === activeChildIndex ? 'bg-[#2f7d68] text-white' : 'bg-[#edf7f1] text-[#2f7d68]'}`}>{child.name || `Anak ${i + 1}`}</button>
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setActiveChildIndex(i); setSaveError(''); }}
+                    className={`rounded-full px-4 py-2 text-sm font-black transition ${
+                      i === activeChildIndex
+                        ? 'bg-[#2f7d68] text-white shadow-sm'
+                        : 'bg-[#edf7f1] text-[#2f7d68] hover:bg-[#d3f0dc]'
+                    }`}
+                  >
+                    {child.name || `Anak ${i + 1}`}
+                    {areAllScoresFilled(child.scores) && i !== activeChildIndex && (
+                      <span className="ml-1.5 text-xs">✓</span>
+                    )}
+                  </button>
                 ))}
               </div>
-              <h3 className="text-lg font-black text-slate-950 mb-1">{currentTheme?.emoji} {currentTheme?.name}</h3>
-              <p className="text-sm font-semibold text-slate-500 mb-4">Skor: 1 (BB) – 4 (BSB)</p>
+
+              <div className="mb-4 flex items-center gap-3">
+                <span className="text-3xl">{currentTheme?.emoji}</span>
+                <div>
+                  <h3 className="text-base font-black text-slate-950">{currentTheme?.name}</h3>
+                  <p className="text-xs font-semibold text-slate-500">Skor: 1=BB · 2=MB · 3=BSH · 4=BSB</p>
+                </div>
+              </div>
+
               <div className="space-y-3">
                 {OBSERVATION_INDICATORS.map((indicator, idx) => {
                   const score = wizard.children[activeChildIndex].scores[idx];
                   return (
-                    <div key={idx} className="rounded-2xl border border-[#dbe9de] bg-[#f7fbf6] p-4">
-                      <p className="text-sm font-bold text-slate-700 mb-2">{idx + 1}. {indicator}</p>
+                    <div key={idx} className={`rounded-2xl border p-4 transition ${
+                      score > 0 ? 'border-[#aad4c4] bg-[#f0faf5]' : 'border-[#dbe9de] bg-[#f7fbf6]'
+                    }`}>
+                      <p className="text-sm font-bold text-slate-700 mb-3">
+                        <span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#2f7d68] text-[10px] font-black text-white">{idx + 1}</span>
+                        {indicator}
+                      </p>
                       <div className="flex gap-2">
                         {[1, 2, 3, 4].map((s) => (
-                          <button key={s} onClick={() => setChildScore(activeChildIndex, idx, s)} className={`h-9 w-9 rounded-full text-sm font-black ${score === s ? 'bg-[#2f7d68] text-white' : 'bg-white text-slate-600 ring-1 ring-[#dbe9de]'}`}>{s}</button>
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setChildScore(activeChildIndex, idx, s)}
+                            className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-black transition ${
+                              score === s
+                                ? 'bg-[#2f7d68] text-white shadow-sm scale-110'
+                                : 'bg-white text-slate-600 ring-1 ring-[#dbe9de] hover:ring-[#2f7d68] hover:text-[#2f7d68]'
+                            }`}
+                          >
+                            {s}
+                          </button>
                         ))}
+                        {score > 0 && (
+                          <span className="ml-2 self-center rounded-full bg-[#edf7f1] px-2.5 py-0.5 text-xs font-black text-[#2f7d68]">
+                            {['', 'BB', 'MB', 'BSH', 'BSB'][score]}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <div className="mt-4 flex justify-between">
-                <p className="text-sm font-bold text-slate-500">
-                  Rata-rata: {wizard.children[activeChildIndex] ? calculateAverageScore(wizard.children[activeChildIndex].scores).toFixed(2) : '0.00'}
-                </p>
+
+              <div className="mt-5 flex items-center justify-between border-t border-[#dbe9de] pt-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-500">Rata-rata skor</p>
+                  <p className="text-lg font-black text-[#2f7d68]">
+                    {calculateAverageScore(wizard.children[activeChildIndex].scores).toFixed(2)}
+                  </p>
+                </div>
                 {activeChildIndex < wizard.children.length - 1 ? (
-                  <button onClick={() => { setActiveChildIndex((prev) => prev + 1); setSaveError(''); }} className="rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white">Anak Selanjutnya →</button>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveChildIndex((prev) => prev + 1); setSaveError(''); }}
+                    className="rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
+                  >
+                    Anak Selanjutnya →
+                  </button>
                 ) : (
-                  <button onClick={goToStep3} disabled={isSaving} className="rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white disabled:opacity-60">{isSaving ? 'Menyimpan...' : 'Simpan & Lihat Rekap →'}</button>
+                  <button
+                    type="button"
+                    onClick={goToStep3}
+                    disabled={isSaving}
+                    className="rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59] disabled:opacity-60"
+                  >
+                    {isSaving ? 'Menyimpan...' : 'Simpan & Lihat Rekap →'}
+                  </button>
                 )}
               </div>
             </div>
@@ -1778,16 +1941,23 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
 
           {step === 'step3' && savedSession && (
             <div className="rounded-3xl border border-[#dbe9de] bg-white p-6 shadow-[var(--shadow-card)] space-y-4">
-              <h3 className="text-xl font-black text-slate-950">Rekap Observasi</h3>
-              <div className="flex gap-4 text-sm">
-                <div className="rounded-2xl bg-[#edf7f1] px-4 py-3"><span className="font-black">{currentTheme?.emoji} {currentTheme?.name}</span></div>
-                <div className="rounded-2xl bg-[#edf7f1] px-4 py-3"><span className="font-black">{savedSession.sessionDate}</span></div>
+              <h3 className="text-xl font-black text-slate-950">Rekap Observasi ✅</h3>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <div className="rounded-2xl bg-[#edf7f1] px-4 py-2.5">
+                  <span className="font-black">{currentTheme?.emoji} {currentTheme?.name}</span>
+                </div>
+                <div className="rounded-2xl bg-[#edf7f1] px-4 py-2.5">
+                  <span className="font-black">{savedSession.sessionDate}</span>
+                </div>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-100">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-[#f7fbf6] text-xs font-black uppercase text-slate-500">
-                      <th className="px-4 py-3">Anak</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Rata</th><th className="px-4 py-3">Kategori</th>
+                      <th className="px-4 py-3">Anak</th>
+                      <th className="px-4 py-3">Total</th>
+                      <th className="px-4 py-3">Rata</th>
+                      <th className="px-4 py-3">Kategori</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1796,15 +1966,32 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                         <td className="px-4 py-4 font-black text-slate-950">{r.childName}</td>
                         <td className="px-4 py-4 font-semibold">{r.totalScore}/48</td>
                         <td className="px-4 py-4 font-semibold">{r.averageScore.toFixed(2)}</td>
-                        <td className="px-4 py-4"><span className="rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-black text-[#2f7d68]">{r.category} — {CATEGORY_LABELS[r.category]}</span></td>
+                        <td className="px-4 py-4">
+                          <span className="rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-black text-[#2f7d68]">
+                            {r.category} — {CATEGORY_LABELS[r.category]}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <button onClick={() => openObservationReport(savedSession.id)} className="min-h-12 w-full rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white">
-                🖨️ Cetak / Unduh PDF
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={goBackToList}
+                  className="min-h-12 flex-1 rounded-full border border-[#dbe9de] bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-[#f7fbf6]"
+                >
+                  ← Kembali ke Daftar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintSessionId(savedSession.id)}
+                  className="min-h-12 flex-1 rounded-full bg-[#2f7d68] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#276c59]"
+                >
+                  🖨️ Preview & Cetak PDF
+                </button>
+              </div>
             </div>
           )}
         </div>

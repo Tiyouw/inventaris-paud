@@ -6,6 +6,15 @@ import {
   getSchoolByCode, getTtdUrl,
 } from '@/lib/observation';
 
+// Teacher name per school code
+const TEACHER_NAMES: Record<string, string> = {
+  '59': 'Musbiha, S.Pd.',
+  '69': 'Mei Al Ifa, S.Pd.',
+  '01': 'Khumaidah, S.Pd.',
+  '15': 'Avin Wardani, S.Pd.',
+  '02': 'Anik Susiawati, S.Pd.',
+};
+
 export async function GET(request: Request) {
   const schoolCode = await getSchoolCodeFromCookie();
   if (!schoolCode) {
@@ -23,17 +32,19 @@ export async function GET(request: Request) {
   const school = getSchoolByCode(schoolCode);
   const theme = OBSERVATION_THEMES.find((t) => t.id === session.themeId);
   const ttdUrl = getTtdUrl(schoolCode);
-  const dateStr = new Date(session.sessionDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const teacherName = TEACHER_NAMES[schoolCode] ?? '';
+  // Append T00:00:00 so Date() parses as local time, not UTC midnight (avoids off-by-one-day)
+  const dateStr = new Date(`${session.sessionDate}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
   const classAvg = session.records.length > 0
     ? (session.records.reduce((s, r) => s + r.averageScore, 0) / session.records.length).toFixed(2) : '0,00';
 
   const rows = session.records.map((r, i) => `
     <tr><td>${i + 1}</td><td>${escapeHtml(r.childName)}</td><td>${r.totalScore}/48</td>
-    <td>${r.averageScore.toFixed(2)}</td><td><strong>${r.category}</strong> — ${CATEGORY_LABELS[r.category]}</td></tr>
+    <td>${r.averageScore.toFixed(2)}</td><td><strong>${r.category}</strong> \u2014 ${CATEGORY_LABELS[r.category]}</td></tr>
   `).join('');
 
   const html = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/>
-<title>Rekap Observasi – ${escapeHtml(school?.name ?? schoolCode)}</title>
+<title>Rekap Observasi \u2013 ${escapeHtml(school?.name ?? schoolCode)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#0f172a}
@@ -50,7 +61,7 @@ tr:nth-child(even) td{background:#f7fbf6}
 .ttd{margin-top:40px;text-align:right}
 .ttd p{margin-bottom:4px;font-size:11px}
 .ttd img{max-width:160px;max-height:80px;margin:8px 0;display:block;margin-left:auto}
-.name-line{border-top:1px solid #0f172a;padding-top:4px;min-width:200px;display:inline-block;font-size:11px}
+.name-line{border-top:1px solid #0f172a;padding-top:6px;min-width:200px;display:inline-block;font-size:11px;font-weight:bold;text-align:center}
 @media print{body{padding:12px}@page{size:A4;margin:16mm}}
 </style></head><body>
 <h1>FORM OBSERVASI PERKEMBANGAN ANAK</h1>
@@ -71,7 +82,7 @@ MB (${CATEGORY_RANGES.MB})=${CATEGORY_LABELS.MB} | BB (${CATEGORY_RANGES.BB})=${
 <div class="ttd">
   <p>Mengetahui,</p><p>Guru Pendamping,</p>
   ${ttdUrl ? `<img src="${escapeHtml(ttdUrl)}" alt="Tanda tangan" />` : '<div style="height:80px"></div>'}
-  <div><span class="name-line">Nama:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+  <div><span class="name-line">${escapeHtml(teacherName)}</span></div>
 </div>
 <script>window.addEventListener('load',()=>window.print());</script>
 </body></html>`;
