@@ -1743,10 +1743,10 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
                 Observasi Eksperimen
               </p>
               <h2 className="mt-3 text-3xl font-black text-slate-950">
-                {schoolCode ? 'Sesi Observasi' : 'Pilih sekolah terlebih dahulu.'}
+                {schoolCode === 'admin' ? 'Semua Sesi Observasi (Admin)' : schoolCode ? 'Sesi Observasi' : 'Pilih sekolah terlebih dahulu.'}
               </h2>
             </div>
-            {schoolCode ? (
+            {schoolCode && schoolCode !== 'admin' ? (
               <button onClick={goToStep1} className="min-h-11 rounded-full bg-[#2f7d68] px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#276c59] active:translate-y-0">
                 + Sesi Baru
               </button>
@@ -1765,11 +1765,28 @@ function ObservasiView({ schoolCode }: { schoolCode: string }) {
             <div className="grid gap-4">
               {sessions.map((s) => {
                 const theme = OBSERVATION_THEMES.find((t) => t.id === s.themeId);
+                const schoolNames: Record<string, string> = {
+                  '59': 'Masyithoh 59',
+                  '69': 'Masyithoh 69',
+                  '01': 'Daruttaqwa',
+                  '15': 'Masyithoh 15',
+                  '02': 'Dharma Wanita 02',
+                };
+                const schoolLabel = schoolNames[s.schoolCode] || `Kode ${s.schoolCode}`;
                 return (
-                  <div key={s.id} className="flex items-center justify-between rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
+                  <div key={s.id} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-3xl border border-[#dbe9de] bg-white p-5 shadow-[var(--shadow-card)]">
                     <div>
                       <p className="font-black text-slate-950">{theme?.emoji} {theme?.name ?? s.themeId}</p>
-                      <p className="text-sm font-semibold text-slate-500">{s.sessionDate} &middot; {s.records.length} anak</p>
+                      <div className="mt-1 flex items-center flex-wrap gap-2 text-sm font-semibold text-slate-500">
+                        {schoolCode === 'admin' && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700 ring-1 ring-blue-200">
+                            🏫 {schoolLabel}
+                          </span>
+                        )}
+                        <span>{s.sessionDate}</span>
+                        <span>&middot;</span>
+                        <span>{s.records.length} anak</span>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button

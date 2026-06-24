@@ -45,9 +45,13 @@ function requireClient() {
 
 export async function listObservationSessions(schoolCode: string): Promise<ObservationSession[]> {
   const supabase = requireClient();
-  const { data: sessions, error: sessErr } = await supabase
-    .from('observation_sessions').select('*')
-    .eq('school_code', schoolCode).order('session_date', { ascending: false });
+  let query = supabase.from('observation_sessions').select('*').order('session_date', { ascending: false });
+
+  if (schoolCode !== 'admin') {
+    query = query.eq('school_code', schoolCode);
+  }
+
+  const { data: sessions, error: sessErr } = await query;
   if (sessErr) throw sessErr;
   if (!sessions || sessions.length === 0) return [];
 
